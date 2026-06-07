@@ -208,6 +208,15 @@
   .d-link{display:inline-flex; margin-top:4px; text-decoration:none}
   .d-comment{background:var(--card); border:1px solid var(--line); border-radius:10px;
     padding:14px 16px; margin-top:16px; font-size:14px; line-height:1.6; white-space:pre-wrap}
+  .d-quick{display:flex; align-items:center; gap:8px; margin-top:14px; flex-wrap:wrap}
+  .d-quick-label{font-size:13px; color:var(--txt-dim); min-width:96px; font-weight:600}
+  .qbtn{width:36px; height:36px; border-radius:9px; border:1px solid var(--line); background:var(--card);
+    color:var(--txt); font-size:20px; line-height:1; cursor:pointer; transition:.15s}
+  .qbtn:hover{background:var(--accent); color:#fff; border-color:var(--accent)}
+  .qinput{width:66px; text-align:center; background:var(--card); border:1px solid var(--line);
+    color:var(--txt); border-radius:9px; padding:7px; font-size:15px; outline:none}
+  .qinput:focus{border-color:var(--accent)}
+  .d-quick-suf{font-size:13px; color:var(--txt-dim)}
   /* ---------- Apparence ---------- */
   .seg{display:inline-flex; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:hidden}
   .seg button{border:none; background:none; color:var(--txt-dim); padding:9px 16px; cursor:pointer; font-size:14px; font-weight:600}
@@ -870,45 +879,10 @@ async function openDetail(id){
   const i = items.find(x=>x.id===id);
   if(!i) return;
   detailId = id;
-  const t=typeById(i.type), s=statusById(i.status), isGame=i.type==='jeu', u=unitOf(i.type);
+  const t=typeById(i.type);
   $('#dTitle').textContent = i.title;
   $('#dImg').innerHTML = i.image ? `<img src="${i.image}">` : `<div class="ph">${t.label[0]}</div>`;
-
-  const h = [];
-  h.push(`<div class="d-badges">
-    <span class="badge-type" style="background:${t.color}">${t.label}</span>
-    <span class="d-status"><span class="dot" style="background:${s.color}"></span>${s.label}</span>
-  </div>`);
-  if(i.rating) h.push(`<div class="d-stars">${'★'.repeat(i.rating)}${'☆'.repeat(5-i.rating)}<span>${i.rating}/5</span></div>`);
-
-  // Progression
-  const pc=i.progCur||0, pt=i.progTotal||0;
-  if(isGame){
-    if(pc>0){ const w=Math.min(100,pc);
-      h.push(`<div class="prog-wrap"><div class="prog-text"><span>Progression</span><span>${pc}%</span></div><div class="prog-bar"><i style="width:${w}%"></i></div></div>`); }
-  } else if(pt>0){
-    const pct=Math.min(100,Math.round(pc/pt*100));
-    h.push(`<div class="prog-wrap"><div class="prog-text"><span>${pc}/${pt}${u?' '+u:''}</span><span>${pct}%</span></div><div class="prog-bar"><i style="width:${pct}%"></i></div></div>`);
-  } else if(pc>0){
-    h.push(`<div class="prog-wrap"><div class="prog-text"><span>${pc}${u?' '+u:''}</span></div></div>`);
-  }
-  if(isGame && (i.achTotal>0 || i.achCur>0)){
-    const ac=i.achCur||0, at=i.achTotal||0, apct=at>0?Math.min(100,Math.round(ac/at*100)):0;
-    h.push(`<div class="prog-wrap"><div class="prog-text"><span>🏆 ${ac}${at?'/'+at:''} succès</span>${at?`<span>${apct}%</span>`:''}</div>${at?`<div class="prog-bar"><i style="width:${apct}%"></i></div>`:''}</div>`);
-  }
-
-  // Méta : plateforme / année / date terminé
-  const meta=[];
-  if(i.platform) meta.push(`<div>🎮 <b>${escapeHtml(i.platform)}</b></div>`);
-  if(i.year)     meta.push(`<div>📅 Sortie : <b>${i.year}</b></div>`);
-  if(i.dateDone) meta.push(`<div>✅ Terminé le <b>${fmtDate(i.dateDone)}</b></div>`);
-  if(meta.length) h.push(`<div class="d-meta" style="margin-top:14px">${meta.join('')}</div>`);
-
-  if(i.tags&&i.tags.length) h.push(`<div class="d-tags">${i.tags.map(x=>`<span class="tag">${escapeHtml(x)}</span>`).join('')}</div>`);
-  if(i.link) h.push(`<a class="btn d-link" href="${escapeHtml(i.link)}" target="_blank" rel="noopener">🔗 Ouvrir le lien</a>`);
-
-  $('#dInfo').innerHTML = h.join('');
-  $('#dComment').innerHTML = i.comment ? `<div class="d-comment">${escapeHtml(i.comment)}</div>` : '';
+  renderDetailInfo(i);
   $('#detailOverlay').classList.add('open');
 
   // Musique / OST : lecture auto à l'ouverture (le clic sur la carte sert de geste utilisateur)
@@ -923,6 +897,80 @@ async function openDetail(id){
     }
     if(src){ au.src=src; try{ await au.play(); }catch(e){ sBtn.textContent='🔇 Couper'; } }
   } else sBtn.style.display='none';
+}
+
+// Construit (et reconstruit après un ＋/−) la zone d'infos du détail, SANS toucher à l'audio
+const pbar = w => `<div class="prog-bar" style="margin-top:6px"><i style="width:${w}%"></i></div>`;
+function renderDetailInfo(i){
+  const t=typeById(i.type), s=statusById(i.status), isGame=i.type==='jeu', u=unitOf(i.type);
+  const h=[];
+  h.push(`<div class="d-badges">
+    <span class="badge-type" style="background:${t.color}">${t.label}</span>
+    <span class="d-status"><span class="dot" style="background:${s.color}"></span>${s.label}</span>
+  </div>`);
+  if(i.rating) h.push(`<div class="d-stars">${'★'.repeat(i.rating)}${'☆'.repeat(5-i.rating)}<span>${i.rating}/5</span></div>`);
+
+  // Progression : le % d'un jeu est TOUJOURS affiché ; sinon seulement si un total est défini
+  const pc=i.progCur||0, pt=i.progTotal||0, step=isGame?5:1;
+  if(isGame || pt>0){
+    const suf = isGame ? '%' : '/ '+pt+(u?' '+u:'');
+    h.push(`<div class="d-quick">
+      <span class="d-quick-label">Progression${isGame?' (%)':''}</span>
+      <button class="qbtn" data-q="prog" data-d="${-step}">−</button>
+      <input class="qinput" id="qProg" type="number" min="0" value="${pc}">
+      <span class="d-quick-suf">${suf}</span>
+      <button class="qbtn" data-q="prog" data-d="${step}">＋</button>
+    </div>`);
+    if(isGame){ if(pc>0) h.push(pbar(Math.min(100,pc))); }
+    else h.push(pbar(Math.min(100,Math.round(pc/pt*100))));
+  }
+
+  // Succès (jeux) : seulement si un total de succès est défini
+  if(isGame && (i.achTotal||0)>0){
+    const ac=i.achCur||0, at=i.achTotal;
+    h.push(`<div class="d-quick">
+      <span class="d-quick-label">🏆 Succès</span>
+      <button class="qbtn" data-q="ach" data-d="-1">−</button>
+      <input class="qinput" id="qAch" type="number" min="0" value="${ac}">
+      <span class="d-quick-suf">/ ${at}</span>
+      <button class="qbtn" data-q="ach" data-d="1">＋</button>
+    </div>`);
+    h.push(pbar(Math.min(100,Math.round(ac/at*100))));
+  }
+
+  // Méta : plateforme / année / date terminé
+  const meta=[];
+  if(i.platform) meta.push(`<div>🎮 <b>${escapeHtml(i.platform)}</b></div>`);
+  if(i.year)     meta.push(`<div>📅 Sortie : <b>${i.year}</b></div>`);
+  if(i.dateDone) meta.push(`<div>✅ Terminé le <b>${fmtDate(i.dateDone)}</b></div>`);
+  if(meta.length) h.push(`<div class="d-meta" style="margin-top:14px">${meta.join('')}</div>`);
+  if(i.tags&&i.tags.length) h.push(`<div class="d-tags">${i.tags.map(x=>`<span class="tag">${escapeHtml(x)}</span>`).join('')}</div>`);
+  if(i.link) h.push(`<a class="btn d-link" href="${escapeHtml(i.link)}" target="_blank" rel="noopener">🔗 Ouvrir le lien</a>`);
+
+  $('#dInfo').innerHTML = h.join('');
+  $('#dComment').innerHTML = i.comment ? `<div class="d-comment">${escapeHtml(i.comment)}</div>` : '';
+  // Branche les boutons rapides + les champs éditables
+  $('#dInfo').querySelectorAll('.qbtn').forEach(b=> b.onclick=()=>quickBump(b.dataset.q, +b.dataset.d));
+  const qp=$('#qProg'); if(qp) qp.onchange=()=>quickSet('prog', +qp.value||0);
+  const qa=$('#qAch'); if(qa) qa.onchange=()=>quickSet('ach', +qa.value||0);
+}
+
+function quickBump(which, delta){
+  const i = items.find(x=>x.id===detailId); if(!i) return;
+  const cur = which==='prog' ? (i.progCur||0) : (i.achCur||0);
+  quickSet(which, cur+delta);
+}
+async function quickSet(which, val){
+  const i = items.find(x=>x.id===detailId); if(!i) return;
+  const isGame = i.type==='jeu';
+  val = Math.max(0, Math.round(val||0));
+  if(which==='prog'){ if(!isGame && i.progTotal>0 && val>i.progTotal) val=i.progTotal; i.progCur=val; }
+  else { if(i.achTotal>0 && val>i.achTotal) val=i.achTotal; i.achCur=val; }
+  i.updated = Date.now();
+  await DB.put(i);
+  render();              // met à jour la grille
+  renderDetailInfo(i);   // rafraîchit barres/valeurs SANS relancer la musique
+  await afterChange();   // propage à la synchro
 }
 function closeDetail(){ const au=$('#dAudio'); if(au){ au.pause(); } $('#detailOverlay').classList.remove('open'); }
 
