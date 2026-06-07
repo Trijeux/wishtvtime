@@ -887,7 +887,7 @@ const LOCAL = {
       // Navigateur qui bloque / ne supporte pas l'écriture directe (Firefox, Safari, mobile)
       this.fallback = true; await DB.meta('localFallback', true);
       this.downloadSave();
-      toast('💾 Sauvegarde locale activée (via le bouton 💾).');
+      toast('✅ Données auto-sauvegardées dans le navigateur · 💾 = copie de secours');
       return;
     }
     try{
@@ -950,11 +950,11 @@ function updateModeUI(){
   $('#cfgForget').style.display  = (!local && SYNC.configured()) ? 'inline-flex' : 'none';
   if(local){
     $('#cfgFileName').textContent = LOCAL.name() ? ('📄 '+LOCAL.name()) : 'Aucun fichier choisi';
-    $('#cfgPickFile').style.display = 'inline-flex';                 // toujours dispo : on peut choisir
-    $('#cfgPickFile').textContent = LOCAL.supported() ? '📁 Choisir le fichier…' : '💾 Choisir où enregistrer…';
+    $('#cfgPickFile').style.display = 'inline-flex';
+    $('#cfgPickFile').textContent = LOCAL.supported() ? '📁 Choisir le fichier…' : '💾 Télécharger une copie';
     $('#localSupportNote').innerHTML = LOCAL.supported()
-      ? '✅ Ce navigateur enregistre <b>automatiquement</b> dans le fichier choisi (l\'emplacement est mémorisé).'
-      : 'ℹ️ Ce navigateur (ex : <b>Firefox</b>) ne mémorise pas le fichier, mais tu peux <b>choisir où l\'enregistrer</b> à chaque fois. 💡 Active « <b>Toujours demander où enregistrer les fichiers</b> » dans les réglages du navigateur pour choisir le dossier. Sinon, le <b>mode GitHub</b> sauvegarde tout seul.';
+      ? '✅ Ce navigateur enregistre <b>automatiquement</b> dans le fichier choisi (l\'emplacement est mémorisé, le même fichier est réécrit).'
+      : '✅ Tes données sont déjà sauvegardées <b>automatiquement dans le navigateur</b> (permanent).<br>💾 <b>Pour garder un seul fichier que tu écrases</b> (au lieu de (1)(2)…) :<br>1. Réglages du navigateur → Téléchargements → active <b>« Toujours demander où enregistrer »</b><br>2. À chaque clic 💾, choisis <b>le même fichier</b> et confirme <b>« Remplacer »</b>.<br>➡️ Sinon, le <b>mode GitHub</b> évite tout ça (synchro auto, sans fichier).';
   } else {
     SYNC.setDot(SYNC.configured() ? 'ok' : 'off');
   }
