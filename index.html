@@ -180,7 +180,8 @@
     <button class="btn btn-icon" id="exportBtn" title="Exporter une sauvegarde">⬇️ Export</button>
     <button class="btn btn-icon" id="importBtn" title="Importer une sauvegarde">⬆️ Import</button>
     <button class="btn btn-icon" id="syncBtn" title="Synchroniser maintenant"><span id="syncDot" class="sync-dot off"></span>🔄</button>
-    <button class="btn btn-icon" id="settingsBtn" title="Paramètres de synchro">⚙️</button>
+    <button class="btn btn-icon" id="localSaveBtn" title="Télécharger la sauvegarde" style="display:none">💾</button>
+    <button class="btn btn-icon" id="settingsBtn" title="Paramètres">⚙️</button>
     <button class="btn btn-primary" id="addBtn">＋ Ajouter</button>
     <input type="file" id="importInput" accept="application/json">
   </div>
@@ -861,9 +862,19 @@ const SYNC = {
 // =========================================================
 const LOCAL = {
   handle:null,
+  fallback:false,                              // navigateur sans écriture directe -> on télécharge
   supported(){ return 'showSaveFilePicker' in window; },
   name(){ return this.handle ? this.handle.name : null; },
-  async restore(){ try{ this.handle = await DB.meta('localFile') || null; }catch(e){ this.handle=null; } },
+  async restore(){ try{ this.handle = await DB.meta('localFile') || null; this.fallback = await DB.meta('localFallback') || false; }catch(e){ this.handle=null; } },
+  // Téléchargement universel (tous navigateurs, y compris Android)
+  downloadSave(){
+    const blob = new Blob([this._payload()], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'ma-collection.json';
+    a.click();
+    toast('💾 Sauvegarde téléchargée');
+  },
   async _perm(mode){
     if(!this.handle) return false;
     const opts={mode};
@@ -871,13 +882,21 @@ const LOCAL = {
     try{ return (await this.handle.requestPermission(opts))==='granted'; }catch(e){ return false; }
   },
   async pick(){
-    if(!this.supported()){ toast('⚠️ Ce navigateur ne permet pas de choisir un fichier. Utilise Export/Import.'); return; }
+    if(!confirm('Cette application va enregistrer un fichier de sauvegarde sur ton appareil.\n\nAutoriser ?')) return;
+    if(!this.supported()){
+      // Navigateur qui bloque / ne supporte pas l'écriture directe (Firefox, Safari, mobile)
+      this.fallback = true; await DB.meta('localFallback', true);
+      this.downloadSave();
+      toast('💾 Écriture auto non dispo ici — utilise le bouton 💾 pour enregistrer.');
+      return;
+    }
     try{
       this.handle = await window.showSaveFilePicker({
         suggestedName:'ma-collection.json',
         types:[{description:'Sauvegarde WishTvTime', accept:{'application/json':['.json']}}]
       });
-    }catch(e){ return; }                       // l'utilisateur a annulé
+    }catch(e){ return; }                       // l'utilisateur a annulé / refusé
+    this.fallback = false; await DB.meta('localFallback', false);
     await DB.meta('localFile', this.handle);
     await this.loadMerge();                     // récupère les fiches déjà présentes dans le fichier
     await this.save();                          // puis écrit l'état courant
@@ -909,7 +928,7 @@ const LOCAL = {
     items = merged; render();
   },
   _t:null,
-  autoSave(){ clearTimeout(this._t); this._t = setTimeout(()=>this.save(), 800); },
+  autoSave(){ clearTimeout(this._t); this._t = setTimeout(()=>{ if(this.handle) this.save(); }, 800); },
 };
 
 // Aiguillage après chaque modification, selon le mode choisi
@@ -926,6 +945,7 @@ function updateModeUI(){
   $('#cfgTest').style.display    = local ? 'none' : 'inline-flex';
   $('#cfgSyncNow').style.display = local ? 'none' : 'inline-flex';
   $('#syncBtn').style.display    = local ? 'none' : 'inline-flex';   // pas de bouton 🔄 en mode local
+  $('#localSaveBtn').style.display = (local && !LOCAL.handle) ? 'inline-flex' : 'none';  // 💾 manuel si pas d'écriture auto
   $('#cfgForget').style.display  = (!local && SYNC.configured()) ? 'inline-flex' : 'none';
   if(local){
     $('#cfgFileName').textContent = LOCAL.name() ? ('📄 '+LOCAL.name()) : 'Aucun fichier choisi';
@@ -1006,6 +1026,7 @@ function bind(){
   $('#syncOverlay').onclick = e=>{ if(e.target===$('#syncOverlay')) $('#syncOverlay').classList.remove('open'); };
   $('#cfgMode').onchange = e=>{ SYNC.cfg.mode = e.target.value; updateModeUI(); };
   $('#cfgPickFile').onclick = async ()=>{ await LOCAL.pick(); updateModeUI(); };
+  $('#localSaveBtn').onclick = ()=>LOCAL.downloadSave();
   $('#cfgTest').onclick = ()=>{ saveSyncCfg(); SYNC.test(); };
   $('#cfgSyncNow').onclick = ()=>{ saveSyncCfg(); SYNC.run(false); };
   $('#cfgSave').onclick = ()=>{ saveSyncCfg(); $('#syncOverlay').classList.remove('open'); };
