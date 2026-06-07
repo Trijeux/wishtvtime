@@ -44,6 +44,12 @@
     background:var(--header); backdrop-filter:blur(12px);
     border-bottom:1px solid var(--line);
     padding:14px 20px;
+    transition:transform .25s ease;
+  }
+  header.header-hidden{ transform:translateY(-100%); }
+  @media(max-width:560px){
+    header{ padding:9px 12px; }
+    .filters{ margin-top:10px; gap:8px; }
   }
   .head-row{display:flex; align-items:center; gap:14px; flex-wrap:wrap; max-width:1300px; margin:0 auto}
   .logo{font-size:22px; font-weight:800; letter-spacing:.5px; white-space:nowrap}
@@ -1751,6 +1757,17 @@ function bind(){
 
   // Raccourci Echap
   document.onkeydown = e=>{ if(e.key==='Escape'){ closeModal(); closeDetail(); $('#syncOverlay').classList.remove('open'); $('#themeOverlay').classList.remove('open'); } };
+
+  // Mobile : masquer l'en-tête quand on descend, le ré-afficher quand on remonte (gagne de la place)
+  let lastY = 0;
+  window.addEventListener('scroll', ()=>{
+    const hd = document.querySelector('header');
+    if(window.innerWidth > 560){ hd.classList.remove('header-hidden'); return; }
+    const y = window.scrollY;
+    if(y > lastY && y > 90) hd.classList.add('header-hidden');     // on descend -> on cache
+    else hd.classList.remove('header-hidden');                     // on remonte -> on montre
+    lastY = y;
+  }, {passive:true});
 }
 
 // ---- Init ----
