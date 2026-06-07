@@ -609,8 +609,8 @@ function render(){
     const pc = i.progCur||0, pt = i.progTotal||0, u = unitOf(i.type);
     let progHtml = '';
     if(isGame){
-      if(pc>0){ const pct = Math.min(100, pc);
-        progHtml = `<div class="prog-wrap"><div class="prog-text"><span>Progression</span><span>${pct}%</span></div><div class="prog-bar"><i style="width:${pct}%"></i></div></div>`; }
+      if(pc>0){ const w = Math.min(100, pc);   // barre plafonnée à 100, texte = vrai %
+        progHtml = `<div class="prog-wrap"><div class="prog-text"><span>Progression</span><span>${pc}%</span></div><div class="prog-bar"><i style="width:${w}%"></i></div></div>`; }
     } else if(pt>0){
       const pct = Math.min(100, Math.round(pc/pt*100));
       progHtml = `<div class="prog-wrap"><div class="prog-text"><span>${pc}/${pt}${u?' '+u:''}</span><span>${pct}%</span></div><div class="prog-bar"><i style="width:${pct}%"></i></div></div>`;
@@ -668,7 +668,7 @@ function updateFormType(){
   $('#progUnit').textContent   = isGame ? '%' : unitOf(type);
   $('#progSlash').style.display  = isGame ? 'none' : '';
   $('#fProgTotal').style.display = isGame ? 'none' : '';
-  $('#fProgCur').max = isGame ? 100 : '';
+  $('#fProgCur').removeAttribute('max');   // % d'un jeu peut dépasser 100
   // Succès : uniquement pour les jeux
   $('#achField').style.display = isGame ? 'block' : 'none';
   // Plateformes : on régénère les suggestions cliquables selon le type
@@ -761,6 +761,13 @@ async function save(){
   if(link && !/^https?:\/\//i.test(link)) link = 'https://'+link;
   const type = $('#fType').value;
   const isGame = type==='jeu';
+  // Compteurs : le « courant » ne peut pas dépasser le total (sauf le % d'un jeu, qui peut dépasser 100)
+  let progCur   = Math.max(0, +$('#fProgCur').value || 0);
+  let progTotal = isGame ? 100 : Math.max(0, +$('#fProgTotal').value || 0);  // jeu = % (total fixe 100)
+  if(!isGame && progTotal>0 && progCur>progTotal) progCur = progTotal;
+  let achTotal  = isGame ? Math.max(0, +$('#fAchTotal').value || 0) : 0;
+  let achCur    = isGame ? Math.max(0, +$('#fAchCur').value   || 0) : 0;
+  if(achTotal>0 && achCur>achTotal) achCur = achTotal;
   const item = {
     id,
     title,
@@ -769,10 +776,7 @@ async function save(){
     rating: curRating,
     tags: curTags,
     comment: $('#fComment').value.trim(),
-    progCur:   +$('#fProgCur').value   || 0,
-    progTotal: isGame ? 100 : (+$('#fProgTotal').value || 0),  // jeu = pourcentage (total fixe 100)
-    achCur:    isGame ? (+$('#fAchCur').value   || 0) : 0,
-    achTotal:  isGame ? (+$('#fAchTotal').value || 0) : 0,
+    progCur, progTotal, achCur, achTotal,
     year:      +$('#fYear').value      || null,
     dateDone:  $('#fDateDone').value   || '',
     platform:  curPlatforms.join(', '),
@@ -1196,6 +1200,13 @@ function bind(){
   $('#saveBtn').onclick = save;
   $('#deleteBtn').onclick = removeItem;
   $('#fType').onchange = updateFormType;
+  // Empêche le « courant » de dépasser le total (succès, et progression hors jeu)
+  const clampPair = (curSel, totSel)=>{ const c=$(curSel), t=+$(totSel).value; if(t>0 && +c.value>t) c.value=t; };
+  $('#fProgCur').oninput   = ()=>{ if($('#fType').value!=='jeu') clampPair('#fProgCur','#fProgTotal'); };
+  $('#fProgTotal').oninput = ()=>{ if($('#fType').value!=='jeu') clampPair('#fProgCur','#fProgTotal'); };
+  $('#fAchCur').oninput    = ()=>clampPair('#fAchCur','#fAchTotal');
+  $('#fAchTotal').oninput  = ()=>clampPair('#fAchCur','#fAchTotal');
+
   // Plateforme (étiquettes) : Entrée ou virgule = ajoute ; Retour arrière (champ vide) = retire la dernière
   $('#platformEntry').onkeydown = e=>{
     if(e.key==='Enter' || e.key===','){ e.preventDefault(); addPlatform(e.target.value.replace(/,$/,'')); }
