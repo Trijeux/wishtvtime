@@ -217,6 +217,19 @@
     color:var(--txt); border-radius:9px; padding:7px; font-size:15px; outline:none}
   .qinput:focus{border-color:var(--accent)}
   .d-quick-suf{font-size:13px; color:var(--txt-dim)}
+  /* ---------- Statistiques ---------- */
+  .stat-total{font-size:36px; font-weight:800; line-height:1}
+  .stat-total small{font-size:14px; font-weight:600; color:var(--txt-dim)}
+  .stat-h{font-size:12px; font-weight:700; color:var(--txt-dim); text-transform:uppercase; letter-spacing:.5px; margin:18px 0 8px}
+  .stat-row{display:flex; align-items:center; gap:10px; margin:6px 0; font-size:13px}
+  .stat-row .lbl{min-width:120px; color:var(--txt)}
+  .stat-row .barwrap{flex:1; background:var(--bg2); border-radius:6px; height:10px; overflow:hidden}
+  .stat-row .barwrap i{display:block; height:100%; border-radius:6px; background:var(--accent)}
+  .stat-row .cnt{min-width:30px; text-align:right; font-weight:700; color:var(--txt-dim)}
+  .stat-cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:10px; margin:10px 0}
+  .stat-card{background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; text-align:center}
+  .stat-card .v{font-size:22px; font-weight:800}
+  .stat-card .k{font-size:11px; color:var(--txt-dim); margin-top:4px}
   /* ---------- Apparence ---------- */
   .seg{display:inline-flex; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:hidden}
   .seg button{border:none; background:none; color:var(--txt-dim); padding:9px 16px; cursor:pointer; font-size:14px; font-weight:600}
@@ -269,6 +282,7 @@
     <button class="btn btn-icon" id="importBtn" title="Importer une sauvegarde">⬆️ Import</button>
     <button class="btn btn-icon" id="syncBtn" title="Synchroniser maintenant"><span id="syncDot" class="sync-dot off"></span>🔄</button>
     <button class="btn btn-icon" id="localSaveBtn" title="Télécharger la sauvegarde" style="display:none">💾</button>
+    <button class="btn btn-icon" id="statsBtn" title="Statistiques">📊</button>
     <button class="btn btn-icon" id="themeBtn" title="Apparence">🎨</button>
     <button class="btn btn-icon" id="settingsBtn" title="Paramètres">⚙️</button>
     <button class="btn btn-primary" id="addBtn">＋ Ajouter</button>
@@ -511,6 +525,18 @@
     <div class="modal-actions">
       <div></div>
       <div class="right"><button class="btn btn-primary" id="closeTheme2">Fermer</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Statistiques -->
+<div class="overlay" id="statsOverlay">
+  <div class="modal">
+    <h2><span>📊 Statistiques</span><button class="x" id="closeStats">✕</button></h2>
+    <div id="statsBody"></div>
+    <div class="modal-actions">
+      <div></div>
+      <div class="right"><button class="btn btn-primary" id="closeStats2">Fermer</button></div>
     </div>
   </div>
 </div>
@@ -1636,6 +1662,68 @@ function renderThemePanel(){
 }
 function openTheme(){ THEME.load(); renderThemePanel(); $('#themeOverlay').classList.add('open'); }
 
+// =========================================================
+//  STATISTIQUES
+// =========================================================
+function openStats(){
+  const n = items.length;
+  const h = [];
+  if(n===0){
+    h.push(`<p class="help" style="margin-top:0">Ta collection est vide — ajoute des fiches pour voir des stats.</p>`);
+    $('#statsBody').innerHTML = h.join(''); $('#statsOverlay').classList.add('open'); return;
+  }
+  // barres génériques (liste {label,color,n})
+  const bars = (rows)=>{
+    const max = Math.max(1, ...rows.map(r=>r.n));
+    return rows.map(r=>`<div class="stat-row">
+      <span class="lbl">${r.label}</span>
+      <span class="barwrap"><i style="width:${Math.round(r.n/max*100)}%;background:${r.color||'var(--accent)'}"></i></span>
+      <span class="cnt">${r.n}</span>
+    </div>`).join('');
+  };
+
+  h.push(`<div class="stat-total">${n} <small>fiche${n>1?'s':''} au total</small></div>`);
+
+  // Par type
+  const byType = TYPES.map(t=>({label:t.label, color:t.color, n:items.filter(i=>i.type===t.id).length})).filter(r=>r.n>0);
+  h.push(`<div class="stat-h">Par type</div>${bars(byType)}`);
+
+  // Par statut
+  const byStatus = STATUSES.map(s=>({label:s.label, color:s.color, n:items.filter(i=>i.status===s.id).length})).filter(r=>r.n>0);
+  h.push(`<div class="stat-h">Par statut</div>${bars(byStatus)}`);
+
+  // Cartes chiffres
+  const rated = items.filter(i=>i.rating>0);
+  const avg = rated.length ? (rated.reduce((a,i)=>a+i.rating,0)/rated.length).toFixed(1) : '–';
+  const games = items.filter(i=>i.type==='jeu');
+  const avgPct = games.length ? Math.round(games.reduce((a,i)=>a+(i.progCur||0),0)/games.length) : 0;
+  const achDone = games.reduce((a,i)=>a+(i.achCur||0),0);
+  const achTot  = games.reduce((a,i)=>a+(i.achTotal||0),0);
+  const sumEp = items.filter(i=>i.type==='anime'||i.type==='film').reduce((a,i)=>a+(i.progCur||0),0);
+  const sumTomes = items.filter(i=>i.type==='manga').reduce((a,i)=>a+(i.progCur||0),0);
+  const done = items.filter(i=>i.status==='termine').length;
+
+  const cards = [];
+  cards.push(`<div class="stat-card"><div class="v">${avg}${avg!=='–'?' ★':''}</div><div class="k">Note moyenne</div></div>`);
+  cards.push(`<div class="stat-card"><div class="v">${done}</div><div class="k">Terminé(s)</div></div>`);
+  if(sumEp)    cards.push(`<div class="stat-card"><div class="v">${sumEp}</div><div class="k">Épisodes vus</div></div>`);
+  if(sumTomes) cards.push(`<div class="stat-card"><div class="v">${sumTomes}</div><div class="k">Tomes lus</div></div>`);
+  if(games.length){
+    cards.push(`<div class="stat-card"><div class="v">${avgPct}%</div><div class="k">Complétion jeux (moy.)</div></div>`);
+    if(achTot) cards.push(`<div class="stat-card"><div class="v">${achDone}/${achTot}</div><div class="k">Succès débloqués</div></div>`);
+  }
+  h.push(`<div class="stat-h">En chiffres</div><div class="stat-cards">${cards.join('')}</div>`);
+
+  // Top plateformes
+  const platCount = {};
+  items.forEach(i=>platsOf(i).forEach(p=>platCount[p]=(platCount[p]||0)+1));
+  const topPlat = Object.entries(platCount).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([p,c])=>({label:escapeHtml(p), n:c}));
+  if(topPlat.length) h.push(`<div class="stat-h">Top plateformes</div>${bars(topPlat)}`);
+
+  $('#statsBody').innerHTML = h.join('');
+  $('#statsOverlay').classList.add('open');
+}
+
 // Affiche/masque les sections + le bouton 🔄 selon le mode
 function updateModeUI(){
   const local = SYNC.cfg.mode==='local';
@@ -1724,6 +1812,14 @@ function bind(){
   let dDownTarget = null;
   $('#detailOverlay').onmousedown = e=>{ dDownTarget = e.target; };
   $('#detailOverlay').onclick = e=>{ if(e.target===$('#detailOverlay') && dDownTarget===$('#detailOverlay')) closeDetail(); };
+
+  // Statistiques
+  $('#statsBtn').onclick = openStats;
+  $('#closeStats').onclick = ()=>$('#statsOverlay').classList.remove('open');
+  $('#closeStats2').onclick = ()=>$('#statsOverlay').classList.remove('open');
+  let stDown=null;
+  $('#statsOverlay').onmousedown = e=>{ stDown = e.target; };
+  $('#statsOverlay').onclick = e=>{ if(e.target===$('#statsOverlay') && stDown===$('#statsOverlay')) $('#statsOverlay').classList.remove('open'); };
 
   // Apparence
   $('#themeBtn').onclick = openTheme;
@@ -1829,7 +1925,7 @@ function bind(){
   $('#cfgForget').onclick = ()=>{ if(confirm('Oublier le compte sur cet appareil ? (tes fiches restent)')){ SYNC.cfg.owner=''; SYNC.cfg.repo=''; SYNC.cfg.token=''; SYNC.cfg.auto=false; SYNC.store(); updateModeUI(); $('#syncOverlay').classList.remove('open'); toast('Compte oublié'); } };
 
   // Raccourci Echap
-  document.onkeydown = e=>{ if(e.key==='Escape'){ closeModal(); closeDetail(); $('#syncOverlay').classList.remove('open'); $('#themeOverlay').classList.remove('open'); } };
+  document.onkeydown = e=>{ if(e.key==='Escape'){ closeModal(); closeDetail(); $('#syncOverlay').classList.remove('open'); $('#themeOverlay').classList.remove('open'); $('#statsOverlay').classList.remove('open'); } };
 
   // Mobile : masquer l'en-tête quand on descend, le ré-afficher quand on remonte (gagne de la place)
   let lastY = 0;
