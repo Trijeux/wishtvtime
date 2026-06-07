@@ -160,6 +160,25 @@
   .sugg button{font-size:12px; padding:4px 11px; border-radius:14px; cursor:pointer;
     background:var(--card); border:1px solid var(--line); color:var(--txt-dim); transition:.15s}
   .sugg button:hover{color:#fff; background:var(--accent); border-color:var(--accent)}
+  /* ---------- Vue détail ---------- */
+  .detail-img{aspect-ratio:2/3; border-radius:12px; overflow:hidden; background:var(--card);
+    display:flex; align-items:center; justify-content:center}
+  .detail-img img{width:100%; height:100%; object-fit:cover}
+  .detail-img .ph{font-size:60px; opacity:.25}
+  .d-badges{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px}
+  .d-badges .badge-type{position:static}
+  .d-status{display:inline-flex; align-items:center; gap:7px; font-size:14px; color:var(--txt-dim)}
+  .d-status .dot{width:10px; height:10px; border-radius:50%}
+  .d-stars{color:var(--warn); font-size:18px; letter-spacing:2px; margin-bottom:14px}
+  .d-stars span{color:var(--txt-dim); font-size:13px; letter-spacing:0; margin-left:8px}
+  .d-meta{display:flex; flex-direction:column; gap:7px; margin-bottom:14px; font-size:14px}
+  .d-meta div{color:var(--txt-dim)}
+  .d-meta b{color:var(--txt); font-weight:600}
+  .d-tags{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:4px}
+  .d-tags .tag{font-size:12px; padding:3px 9px}
+  .d-link{display:inline-flex; margin-top:4px; text-decoration:none}
+  .d-comment{background:var(--card); border:1px solid var(--line); border-radius:10px;
+    padding:14px 16px; margin-top:16px; font-size:14px; line-height:1.6; white-space:pre-wrap}
   .modal-actions{display:flex; gap:10px; justify-content:space-between; margin-top:22px}
   .modal-actions .right{display:flex; gap:10px}
   .btn-danger{background:transparent; border:1px solid var(--bad); color:var(--bad)}
@@ -334,6 +353,25 @@
       <div class="right">
         <button class="btn" id="cancelBtn">Annuler</button>
         <button class="btn btn-primary" id="saveBtn">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Détail (consultation) -->
+<div class="overlay" id="detailOverlay">
+  <div class="modal">
+    <h2><span id="dTitle"></span><button class="x" id="closeDetail">✕</button></h2>
+    <div class="form-grid">
+      <div class="detail-img" id="dImg"></div>
+      <div id="dInfo"></div>
+    </div>
+    <div id="dComment"></div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" id="dDelete">🗑 Supprimer</button>
+      <div class="right">
+        <button class="btn" id="dClose2">Fermer</button>
+        <button class="btn btn-primary" id="dEdit">✏️ Modifier</button>
       </div>
     </div>
   </div>
@@ -649,10 +687,63 @@ function render(){
       </div>
     </div>`;
   }).join('');
-  grid.querySelectorAll('.card').forEach(c=>c.onclick=()=>openModal(c.dataset.id));
+  grid.querySelectorAll('.card').forEach(c=>c.onclick=()=>openDetail(c.dataset.id));
 }
 
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+// =========================================================
+//  VUE DÉTAIL (consultation, lecture seule)
+// =========================================================
+let detailId = null;
+function fmtDate(d){ if(!d) return ''; const dt=new Date(d); return isNaN(dt) ? d : dt.toLocaleDateString('fr-FR'); }
+
+function openDetail(id){
+  const i = items.find(x=>x.id===id);
+  if(!i) return;
+  detailId = id;
+  const t=typeById(i.type), s=statusById(i.status), isGame=i.type==='jeu', u=unitOf(i.type);
+  $('#dTitle').textContent = i.title;
+  $('#dImg').innerHTML = i.image ? `<img src="${i.image}">` : `<div class="ph">${t.label[0]}</div>`;
+
+  const h = [];
+  h.push(`<div class="d-badges">
+    <span class="badge-type" style="background:${t.color}">${t.label}</span>
+    <span class="d-status"><span class="dot" style="background:${s.color}"></span>${s.label}</span>
+  </div>`);
+  if(i.rating) h.push(`<div class="d-stars">${'★'.repeat(i.rating)}${'☆'.repeat(5-i.rating)}<span>${i.rating}/5</span></div>`);
+
+  // Progression
+  const pc=i.progCur||0, pt=i.progTotal||0;
+  if(isGame){
+    if(pc>0){ const w=Math.min(100,pc);
+      h.push(`<div class="prog-wrap"><div class="prog-text"><span>Progression</span><span>${pc}%</span></div><div class="prog-bar"><i style="width:${w}%"></i></div></div>`); }
+  } else if(pt>0){
+    const pct=Math.min(100,Math.round(pc/pt*100));
+    h.push(`<div class="prog-wrap"><div class="prog-text"><span>${pc}/${pt}${u?' '+u:''}</span><span>${pct}%</span></div><div class="prog-bar"><i style="width:${pct}%"></i></div></div>`);
+  } else if(pc>0){
+    h.push(`<div class="prog-wrap"><div class="prog-text"><span>${pc}${u?' '+u:''}</span></div></div>`);
+  }
+  if(isGame && (i.achTotal>0 || i.achCur>0)){
+    const ac=i.achCur||0, at=i.achTotal||0, apct=at>0?Math.min(100,Math.round(ac/at*100)):0;
+    h.push(`<div class="prog-wrap"><div class="prog-text"><span>🏆 ${ac}${at?'/'+at:''} succès</span>${at?`<span>${apct}%</span>`:''}</div>${at?`<div class="prog-bar"><i style="width:${apct}%"></i></div>`:''}</div>`);
+  }
+
+  // Méta : plateforme / année / date terminé
+  const meta=[];
+  if(i.platform) meta.push(`<div>🎮 <b>${escapeHtml(i.platform)}</b></div>`);
+  if(i.year)     meta.push(`<div>📅 Sortie : <b>${i.year}</b></div>`);
+  if(i.dateDone) meta.push(`<div>✅ Terminé le <b>${fmtDate(i.dateDone)}</b></div>`);
+  if(meta.length) h.push(`<div class="d-meta" style="margin-top:14px">${meta.join('')}</div>`);
+
+  if(i.tags&&i.tags.length) h.push(`<div class="d-tags">${i.tags.map(x=>`<span class="tag">${escapeHtml(x)}</span>`).join('')}</div>`);
+  if(i.link) h.push(`<a class="btn d-link" href="${escapeHtml(i.link)}" target="_blank" rel="noopener">🔗 Ouvrir le lien</a>`);
+
+  $('#dInfo').innerHTML = h.join('');
+  $('#dComment').innerHTML = i.comment ? `<div class="d-comment">${escapeHtml(i.comment)}</div>` : '';
+  $('#detailOverlay').classList.add('open');
+}
+function closeDetail(){ $('#detailOverlay').classList.remove('open'); }
 
 // =========================================================
 //  MODAL
@@ -804,15 +895,22 @@ async function save(){
   toast(existing ? '✅ Fiche modifiée' : '✅ Fiche ajoutée');
   await afterChange();
 }
+// Suppression réutilisable (depuis l'édition OU la vue détail)
+async function deleteItem(id){
+  tombstones[id] = Date.now();          // on note la suppression (propagée à la synchro)
+  saveTomb();
+  await DB.del(id);
+  items = items.filter(i=>i.id!==id);
+  render();
+  await afterChange();
+}
 async function removeItem(){
   if(!editingId) return;
   if(!confirm('Supprimer définitivement cette fiche ?')) return;
-  tombstones[editingId] = Date.now();          // on note la suppression (propagée à la synchro)
-  saveTomb();
-  await DB.del(editingId);
-  items = items.filter(i=>i.id!==editingId);
-  closeModal(); render(); toast('🗑 Fiche supprimée');
-  await afterChange();
+  const id = editingId;
+  closeModal();
+  await deleteItem(id);
+  toast('🗑 Fiche supprimée');
 }
 
 // =========================================================
@@ -1218,6 +1316,20 @@ function bind(){
   $('#overlay').onmousedown = e=>{ downTarget = e.target; };
   $('#overlay').onclick = e=>{ if(e.target===$('#overlay') && downTarget===$('#overlay')) closeModal(); };
 
+  // Vue détail
+  $('#closeDetail').onclick = closeDetail;
+  $('#dClose2').onclick = closeDetail;
+  $('#dEdit').onclick = ()=>{ const id=detailId; closeDetail(); openModal(id); };
+  $('#dDelete').onclick = async ()=>{
+    if(!detailId) return;
+    if(!confirm('Supprimer définitivement cette fiche ?')) return;
+    const id = detailId; closeDetail();
+    await deleteItem(id); toast('🗑 Fiche supprimée');
+  };
+  let dDownTarget = null;
+  $('#detailOverlay').onmousedown = e=>{ dDownTarget = e.target; };
+  $('#detailOverlay').onclick = e=>{ if(e.target===$('#detailOverlay') && dDownTarget===$('#detailOverlay')) closeDetail(); };
+
   // Recherche / filtres
   $('#searchInput').oninput = e=>{ filters.q=e.target.value; render(); };
   $('#statusFilter').onchange = e=>{ filters.status=e.target.value; render(); };
@@ -1266,7 +1378,7 @@ function bind(){
   $('#cfgForget').onclick = ()=>{ if(confirm('Oublier le compte sur cet appareil ? (tes fiches restent)')){ SYNC.cfg.owner=''; SYNC.cfg.repo=''; SYNC.cfg.token=''; SYNC.cfg.auto=false; SYNC.store(); updateModeUI(); $('#syncOverlay').classList.remove('open'); toast('Compte oublié'); } };
 
   // Raccourci Echap
-  document.onkeydown = e=>{ if(e.key==='Escape'){ closeModal(); $('#syncOverlay').classList.remove('open'); } };
+  document.onkeydown = e=>{ if(e.key==='Escape'){ closeModal(); closeDetail(); $('#syncOverlay').classList.remove('open'); } };
 }
 
 // ---- Init ----
