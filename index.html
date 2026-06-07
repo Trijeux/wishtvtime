@@ -47,12 +47,10 @@
     transition:transform .25s ease;
   }
   header.header-hidden{ transform:translateY(-100%); }
-  .mobile-only{ display:none; }
+  .filters.collapsed{ display:none; }   /* repli des filtres (PC + mobile) */
   @media(max-width:560px){
     header{ padding:9px 12px; }
-    .filters{ margin-top:10px; gap:8px; display:none; }   /* repliés par défaut sur mobile */
-    .filters.show{ display:flex; }
-    .mobile-only{ display:inline-flex; }
+    .filters{ margin-top:10px; gap:8px; }
   }
   .head-row{display:flex; align-items:center; gap:14px; flex-wrap:wrap; max-width:1300px; margin:0 auto}
   .logo{font-size:22px; font-weight:800; letter-spacing:.5px; white-space:nowrap}
@@ -257,7 +255,7 @@
     <div class="search">
       🔎<input type="text" id="searchInput" placeholder="Rechercher un titre...">
     </div>
-    <button class="btn btn-icon mobile-only" id="filterToggle" title="Filtres">🔽 Filtres</button>
+    <button class="btn btn-icon" id="filterToggle" title="Afficher / masquer les filtres">🔼 Filtres</button>
     <button class="btn btn-icon" id="exportBtn" title="Exporter une sauvegarde">⬇️ Export</button>
     <button class="btn btn-icon" id="importBtn" title="Importer une sauvegarde">⬆️ Import</button>
     <button class="btn btn-icon" id="syncBtn" title="Synchroniser maintenant"><span id="syncDot" class="sync-dot off"></span>🔄</button>
@@ -1683,11 +1681,16 @@ function bind(){
   $('#bgInput').onchange = async e=>{ if(e.target.files[0]){ await THEME.setBg(await compress(e.target.files[0], 1920, .85)); renderThemePanel(); } e.target.value=''; };
   $('#bgClear').onclick = async ()=>{ await THEME.clearBg(); renderThemePanel(); };
 
-  // Repli des filtres sur mobile
+  // Repli / dépli des filtres (PC + mobile)
   $('#filterToggle').onclick = ()=>{
-    const open = document.querySelector('.filters').classList.toggle('show');
-    $('#filterToggle').textContent = open ? '🔼 Filtres' : '🔽 Filtres';
+    const collapsed = document.querySelector('.filters').classList.toggle('collapsed');
+    $('#filterToggle').textContent = collapsed ? '🔽 Filtres' : '🔼 Filtres';
   };
+  // État initial : dépliés sur PC, repliés sur petit écran
+  if(window.innerWidth <= 560){
+    document.querySelector('.filters').classList.add('collapsed');
+    $('#filterToggle').textContent = '🔽 Filtres';
+  }
 
   // Recherche / filtres
   $('#searchInput').oninput = e=>{ filters.q=e.target.value; render(); };
