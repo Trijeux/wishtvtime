@@ -364,9 +364,15 @@ const DB = {
 let items = [];
 let editingId = null;
 let curImage = null;     // dataURL
+let imageChanged = false;// l'image a-t-elle été modifiée dans ce formulaire ?
 let curRating = 0;
 let curTags = [];
 const filters = {q:'', type:'', status:'', tag:'', sort:'recent'};
+
+// Suppressions : id -> timestamp(ms). Sert à propager les suppressions entre appareils.
+let tombstones = {};
+function loadTomb(){ try{ tombstones = JSON.parse(localStorage.getItem('mc_tomb')||'{}'); }catch(e){ tombstones = {}; } }
+function saveTomb(){ localStorage.setItem('mc_tomb', JSON.stringify(tombstones)); }
 
 // ---- Helpers ----
 const $ = s => document.querySelector(s);
@@ -390,6 +396,12 @@ function compress(file){
     fr.onload = e => img.src = e.target.result;
     fr.readAsDataURL(file);
   });
+}
+
+// Empreinte du contenu (pour nommer les images par leur contenu -> dédoublonnage)
+async function sha256Hex(str){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 
 // =========================================================
@@ -445,7 +457,7 @@ function render(){
     const stars = i.rating? '★'.repeat(i.rating)+'☆'.repeat(5-i.rating) : '';
     return `<div class="card" data-id="${i.id}">
       <div class="thumb">
-        ${i.image?`<img src="${i.image}">`:`<div class="ph">${t.label[0]}</div>`}
+        ${i.image?`<img src="${i.image}">`:(i.imagePath?`<div class="ph" title="Image en cours de synchro">⏳</div>`:`<div class="ph">${t.label[0]}</div>`)}
         <div class="badge-type" style="background:${t.color}">${t.label}</div>
         <div class="badge-status" style="background:${s.color}" title="${s.label}"></div>
       </div>
@@ -495,6 +507,7 @@ function openModal(id){
   curTags = item?.tags ? [...item.tags] : [];
   setRating(item?.rating || 0);
   setImage(item?.image || null);
+  imageChanged = false;
   renderTags();
   $('#deleteBtn').style.display = item ? 'inline-flex' : 'none';
   $('#overlay').classList.add('open');
@@ -506,18 +519,39 @@ async function save(){
   const title = $('#fTitle').value.trim();
   if(!title){ toast('⚠️ Le titre est obligatoire'); $('#fTitle').focus(); return; }
   const existing = editingId ? items.find(i=>i.id===editingId) : null;
+  const id = editingId || uid();
+  // Image nommée par son contenu -> deux images identiques = même fichier (pas de copie)
+  let imagePath = null;
+  if(curImage){
+    imagePath = (imageChanged || !existing?.imagePath)
+      ? 'images/'+(await sha256Hex(curImage.split(',')[1]))+'.jpg'
+      : existing.imagePath;
+  }
   const item = {
-    id: editingId || uid(),
+    id,
     title,
     type: $('#fType').value,
     status: $('#fStatus').value,
     rating: curRating,
     tags: curTags,
     comment: $('#fComment').value.trim(),
-    image: curImage,
+    image: curImage,                                   // dataURL (cache local, pas dans data.json)
+    imagePath,                                         // référence du fichier (par empreinte de contenu)
+    imageSha: imageChanged ? undefined : existing?.imageSha,
+    imageDirty: imageChanged ? !!curImage : !!existing?.imageDirty,  // à (ré)uploader ?
     created: existing?.created || Date.now(),
     updated: Date.now(),
   };
+  // Détection de doublon : même Titre + même Type + même image = déjà existant
+  // (si l'un des 3 diffère, c'est considéré comme un élément différent)
+  const norm = s => (s||'').trim().toLowerCase();
+  const dup = items.find(i => i.id!==item.id
+    && norm(i.title)===norm(item.title)
+    && i.type===item.type
+    && (i.image||null)===(item.image||null));
+  if(dup){
+    if(!confirm('⚠️ Cet élément existe déjà (même titre, même type et même image).\n\nL\'ajouter quand même ?')) return;
+  }
   await DB.put(item);
   if(existing){ Object.assign(existing,item); } else { items.push(item); }
   closeModal(); render();
@@ -527,6 +561,8 @@ async function save(){
 async function removeItem(){
   if(!editingId) return;
   if(!confirm('Supprimer définitivement cette fiche ?')) return;
+  tombstones[editingId] = Date.now();          // on note la suppression (propagée à la synchro)
+  saveTomb();
   await DB.del(editingId);
   items = items.filter(i=>i.id!==editingId);
   closeModal(); render(); toast('🗑 Fiche supprimée');
@@ -556,6 +592,10 @@ function importData(file){
       for(const it of incoming){
         if(!it.id) it.id = uid();
         if(!it.created) it.created = Date.now();
+        if(it.image){                         // image présente dans la sauvegarde -> à (ré)uploader
+          it.imagePath = 'images/'+(await sha256Hex(it.image.split(',')[1]))+'.jpg';
+          it.imageDirty = true; delete it.imageSha;
+        }
         await DB.put(it);
       }
       items = await DB.all();
@@ -576,9 +616,45 @@ const SYNC = {
   store(){ localStorage.setItem('mc_sync', JSON.stringify(this.cfg)); },
   configured(){ return this.cfg.owner && this.cfg.repo && this.cfg.token; },
   _headers(){ return {Authorization:'token '+this.cfg.token, Accept:'application/vnd.github+json'}; },
-  _url(){ return `https://api.github.com/repos/${this.cfg.owner}/${this.cfg.repo}/contents/data.json`; },
+  _url(){ return this._contents('data.json'); },
+  _contents(path){ return `https://api.github.com/repos/${this.cfg.owner}/${this.cfg.repo}/contents/${path}`; },
+  _api(path){ return `https://api.github.com/repos/${this.cfg.owner}/${this.cfg.repo}/${path}`; },
+  // Lit le message d'erreur renvoyé par GitHub (pour un diagnostic précis)
+  async _errMsg(r){ try{ const j=await r.json(); return (j.message||'')+(j.errors?' '+JSON.stringify(j.errors):''); }catch(e){ return ''; } },
+  // Crée un blob Git à partir de contenu base64 -> renvoie son sha
+  async createBlob(base64){
+    const r = await fetch(this._api('git/blobs'), {method:'POST', headers:this._headers(),
+      body:JSON.stringify({content:base64, encoding:'base64'})});
+    if(!r.ok) throw new Error('blob '+r.status+' — '+await this._errMsg(r));
+    return (await r.json()).sha;
+  },
   b64enc(str){ return btoa(unescape(encodeURIComponent(str))); },
   b64dec(b64){ return decodeURIComponent(escape(atob(b64.replace(/\n/g,'')))); },
+
+  // Champs internes (cache local) à NE PAS écrire dans data.json
+  _stripForJson(it){
+    const {image, imageDirty, imageSha, ...clean} = it;  // on retire l'image base64 + flags locaux
+    return clean;
+  },
+  // Récupère une image depuis le dépôt -> {dataURL, sha}
+  async fetchImage(path){
+    const r = await fetch(this._contents(path)+'?ref='+this.cfg.branch, {headers:this._headers()});
+    if(!r.ok) return null;
+    const d = await r.json();
+    if(!d.content) return null;
+    return {dataURL:'data:image/jpeg;base64,'+d.content.replace(/\n/g,''), sha:d.sha};
+  },
+  // Télécharge les images manquantes en local (nouvel appareil)
+  async fetchMissing(){
+    let changed = false;
+    for(const it of items){
+      if(it.imagePath && !it.image){
+        const img = await this.fetchImage(it.imagePath);
+        if(img){ it.image = img.dataURL; it.imageSha = img.sha; await DB.put(it); changed = true; }
+      }
+    }
+    if(changed) render();
+  },
 
   setDot(state){ const d=$('#syncDot'); if(d) d.className='sync-dot '+state; },
   status(msg){ const s=$('#syncStatus'); if(s) s.textContent=msg; },
@@ -596,35 +672,106 @@ const SYNC = {
     }catch(e){ this.status('❌ Pas de connexion internet ?'); return false; }
   },
 
-  // Récupère {items, sha} du dépôt, ou {items:[], sha:null} si pas encore de fichier
+  // Récupère {items, deleted, sha} du dépôt, ou vide si pas encore de fichier
   async pull(){
-    const r = await fetch(this._url()+'?ref='+this.cfg.branch, {headers:this._headers()});
-    if(r.status===404) return {items:[], sha:null};
+    const r = await fetch(this._url()+'?ref='+this.cfg.branch, {headers:this._headers(), cache:'no-store'});
+    if(r.status===404) return {items:[], deleted:[], sha:null};
     if(!r.ok) throw new Error('pull '+r.status);
     const data = await r.json();
     const json = JSON.parse(this.b64dec(data.content));
-    return {items: Array.isArray(json)?json:(json.items||[]), sha:data.sha};
+    return {
+      items: Array.isArray(json)?json:(json.items||[]),
+      deleted: (json && json.deleted) ? json.deleted : [],
+      sha:data.sha
+    };
   },
 
-  async push(allItems, sha){
-    const body = {
-      message:'maj collection '+new Date().toISOString(),
-      content:this.b64enc(JSON.stringify({app:'WishTvTime',version:1,items:allItems}, null, 2)),
-      branch:this.cfg.branch,
-    };
-    if(sha) body.sha = sha;
-    const r = await fetch(this._url(), {method:'PUT', headers:this._headers(), body:JSON.stringify(body)});
-    if(!r.ok) throw new Error('push '+r.status);
+  // GET sans cache navigateur (évite de lire un "dernier commit" périmé)
+  async _getFresh(path){
+    return fetch(this._api(path), {headers:this._headers(), cache:'no-store'});
+  },
+  // Envoie TOUT (images neuves + data.json + suppressions) en UN SEUL commit (API Git).
+  async push(allItems){
+    const br = this.cfg.branch;
+    // 1) Blobs des images neuves, dédoublonnés par chemin (= par contenu)
+    const blobMap = new Map();   // imagePath -> sha du blob
+    for(const it of allItems){
+      if(it.image && it.imagePath && it.imageDirty){
+        if(!blobMap.has(it.imagePath)){
+          this.status('Préparation image : '+it.title);
+          blobMap.set(it.imagePath, await this.createBlob(it.image.split(',')[1]));
+        }
+        it.imageSha = blobMap.get(it.imagePath); it.imageDirty = false; await DB.put(it);
+      }
+    }
+    const clean = allItems.map(i=>this._stripForJson(i));
+    const deleted = Object.entries(tombstones).map(([id,at])=>({id,at}));
+    const referenced = new Set(clean.filter(i=>i.imagePath).map(i=>i.imagePath));  // images encore utilisées
+    const jsonStr = JSON.stringify({app:'WishTvTime',version:1,items:clean,deleted}, null, 2);
+    const jsonBlob = await this.createBlob(this.b64enc(jsonStr));
+
+    // 2) Commit + avancement de branche, avec réessai si la branche a bougé
+    for(let attempt=0; attempt<3; attempt++){
+      // a) vrai dernier commit (sans cache)
+      let r = await this._getFresh('git/ref/heads/'+br);
+      if(!r.ok) throw new Error('ref '+r.status+' — '+await this._errMsg(r));
+      const latest = (await r.json()).object.sha;
+      // b) arbre de base + fichiers existants (pour les suppressions)
+      r = await this._getFresh('git/commits/'+latest);
+      if(!r.ok) throw new Error('commit-base '+r.status+' — '+await this._errMsg(r));
+      const baseTree = (await r.json()).tree.sha;
+      r = await this._getFresh('git/trees/'+baseTree+'?recursive=1');
+      const existing = new Set(r.ok ? (await r.json()).tree.filter(e=>e.type==='blob').map(e=>e.path) : []);
+      // c) arbre = data.json + images neuves (absentes du dépôt) + nettoyage des images orphelines
+      const tree = [{path:'data.json', mode:'100644', type:'blob', sha:jsonBlob}];
+      for(const [path,sha] of blobMap){ if(!existing.has(path)) tree.push({path, mode:'100644', type:'blob', sha}); }
+      for(const p of existing){
+        if(p.startsWith('images/') && !referenced.has(p)) tree.push({path:p, mode:'100644', type:'blob', sha:null});
+      }
+      // d) nouvel arbre
+      r = await fetch(this._api('git/trees'), {method:'POST', headers:this._headers(),
+        body:JSON.stringify({base_tree:baseTree, tree})});
+      if(!r.ok) throw new Error('tree '+r.status+' — '+await this._errMsg(r));
+      const newTree = (await r.json()).sha;
+      // e) nouveau commit
+      r = await fetch(this._api('git/commits'), {method:'POST', headers:this._headers(),
+        body:JSON.stringify({message:'maj collection '+new Date().toISOString(), tree:newTree, parents:[latest]})});
+      if(!r.ok) throw new Error('commit '+r.status+' — '+await this._errMsg(r));
+      const newCommit = (await r.json()).sha;
+      // f) on avance la branche
+      r = await fetch(this._api('git/refs/heads/'+br), {method:'PATCH', headers:this._headers(),
+        body:JSON.stringify({sha:newCommit})});
+      if(r.ok) return;                                  // ✅ succès
+      if((r.status===422 || r.status===409) && attempt<2){
+        this.status('La branche a bougé, nouvelle tentative...');
+        continue;                                       // la branche a bougé -> on relit et on recommence
+      }
+      throw new Error('ref-update '+r.status+' — '+await this._errMsg(r));
+    }
   },
 
   // Fusion : par id, on garde la version la plus récemment modifiée
   merge(local, remote){
+    const localMap = new Map(local.map(i=>[i.id,i]));
     const map = new Map();
     [...remote, ...local].forEach(it=>{
       if(!it || !it.id) return;
       const cur = map.get(it.id);
       if(!cur || (it.updated||0) >= (cur.updated||0)) map.set(it.id, it);
     });
+    // Retire les fiches supprimées (suppression postérieure à la dernière modif)
+    for(const [id,it] of map){
+      const t = tombstones[id];
+      if(t && t >= (it.updated||0)) map.delete(id);
+    }
+    // Réattache l'image en cache local (data.json distant ne contient pas le base64)
+    for(const [id,it] of map){
+      const loc = localMap.get(id);
+      if(loc && loc.image && !it.image && loc.imagePath===it.imagePath){
+        it.image = loc.image; it.imageSha = loc.imageSha;
+      }
+      if(loc && loc.imageDirty){ it.imageDirty = true; if(!it.image) it.image = loc.image; }
+    }
     return [...map.values()];
   },
 
@@ -633,22 +780,29 @@ const SYNC = {
     if(!this.configured()){ if(!silent) toast('⚙️ Configure d\'abord la synchro'); return; }
     this.busy = true; this.setDot('busy'); this.status('Synchronisation...');
     try{
-      const {items:remote, sha} = await this.pull();
+      const {items:remote, deleted:remoteDel, sha} = await this.pull();
+      // combine les suppressions locales + distantes (on garde la plus récente)
+      for(const d of remoteDel){ if(d && d.id && (!tombstones[d.id] || d.at>tombstones[d.id])) tombstones[d.id]=d.at; }
+      saveTomb();
       const merged = this.merge(items, remote);
-      // sauvegarde locale
+      // sauvegarde locale + purge des fiches supprimées du stockage local
+      for(const id in tombstones){ await DB.del(id); }
       for(const it of merged) await DB.put(it);
       items = merged;
-      // renvoi vers GitHub
-      await this.push(merged, sha);
+      // renvoi vers GitHub (tout en un seul commit)
+      await this.push(merged);
       render();
+      // récupère les images qu'on n'a pas encore en local (ex : nouvel appareil)
+      await this.fetchMissing();
       this.setDot('ok');
       this.cfg.last = new Date().toISOString();
       this.status('✅ Synchronisé à '+new Date().toLocaleTimeString());
       if(!silent) toast('🔄 Synchronisé ('+merged.length+' fiches)');
     }catch(e){
+      console.error('[SYNC] échec :', e);
       this.setDot('err');
       this.status('❌ Échec : '+e.message);
-      if(!silent) toast('❌ Échec de la synchro');
+      if(!silent) toast('❌ Échec : '+e.message);
     }finally{ this.busy=false; }
   },
 
@@ -702,8 +856,8 @@ function bind(){
 
   // Image
   $('#imgDrop').onclick = e=>{ if(e.target.id!=='imgClear') $('#fileInput').click(); };
-  $('#fileInput').onchange = async e=>{ if(e.target.files[0]){ setImage(await compress(e.target.files[0])); } };
-  $('#imgClear').onclick = e=>{ e.stopPropagation(); setImage(null); $('#fileInput').value=''; };
+  $('#fileInput').onchange = async e=>{ if(e.target.files[0]){ setImage(await compress(e.target.files[0])); imageChanged=true; } e.target.value=''; };
+  $('#imgClear').onclick = e=>{ e.stopPropagation(); setImage(null); imageChanged=true; $('#fileInput').value=''; };
 
   // Note
   $('#ratePick').querySelectorAll('span').forEach(s=>s.onclick=()=>setRating(+s.dataset.v===curRating?0:+s.dataset.v));
@@ -744,6 +898,7 @@ function bind(){
   bind();
   await DB.open();
   items = await DB.all();
+  loadTomb();
   render();
   // Synchro
   SYNC.load();
