@@ -177,6 +177,14 @@
     text-decoration:none; font-size:14px; backdrop-filter:blur(4px); z-index:2;
   }
   .badge-link:hover{background:var(--accent)}
+  .badge-fav{
+    position:absolute; bottom:8px; left:8px; width:28px; height:28px; border-radius:8px; border:none;
+    background:rgba(0,0,0,.5); color:#fff; cursor:pointer; font-size:15px; line-height:1;
+    backdrop-filter:blur(4px); z-index:2;
+  }
+  .badge-fav.on{ color:var(--warn); }
+  .badge-fav:hover{ background:var(--accent); }
+  #dFav.on{ color:var(--warn); border-color:var(--warn); }
   .rate-pick{display:flex; gap:4px; font-size:26px; cursor:pointer}
   .rate-pick span{color:var(--line); transition:.1s}
   .rate-pick span.on{color:var(--warn)}
@@ -290,6 +298,8 @@
   </div>
   <div class="filters">
     <div class="chips" id="typeChips"></div>
+    <div class="sep"></div>
+    <div class="chip" id="favChip" title="N'afficher que les favoris">⭐ Favoris</div>
     <div class="sep"></div>
     <select class="mini" id="statusFilter">
       <option value="">Tous les statuts</option>
@@ -460,9 +470,10 @@
     <div id="dComment"></div>
     <audio id="dAudio" loop></audio>
     <div class="modal-actions">
-      <div style="display:flex; gap:10px">
+      <div style="display:flex; gap:10px; flex-wrap:wrap">
         <button class="btn btn-danger" id="dDelete">🗑 Supprimer</button>
-        <button class="btn" id="dSound" style="display:none">🔊 Musique</button>
+        <button class="btn" id="dFav">☆ Favori</button>
+        <button class="btn" id="dSound" style="display:none">🔊 Écouter</button>
       </div>
       <div class="right">
         <button class="btn" id="dClose2">Fermer</button>
@@ -696,7 +707,7 @@ let pendingAudioFile = null; // fichier audio choisi, en attente de capture d'ex
 let curRating = 0;
 let curTags = [];
 let curPlatforms = [];
-const filters = {q:'', type:'', status:'', tag:'', platform:'', year:'', sort:'recent'};
+const filters = {q:'', type:'', status:'', tag:'', platform:'', year:'', fav:false, sort:'recent'};
 
 // Suppressions : id -> timestamp(ms). Sert à propager les suppressions entre appareils.
 let tombstones = {};
@@ -824,6 +835,7 @@ function applyFilters(){
   if(filters.tag)      list = list.filter(i=>(i.tags||[]).includes(filters.tag));
   if(filters.platform) list = list.filter(i=>platsOf(i).includes(filters.platform));
   if(filters.year)     list = list.filter(i=>String(i.year||'')===filters.year);
+  if(filters.fav)      list = list.filter(i=>i.fav);
   const s = filters.sort;
   if(s==='title')       list.sort((a,b)=>a.title.localeCompare(b.title));
   else if(s==='rating') list.sort((a,b)=>(b.rating||0)-(a.rating||0));
@@ -876,6 +888,7 @@ function render(){
         ${i.image?`<img src="${i.image}">`:(i.imagePath?`<div class="ph" title="Image en cours de synchro">⏳</div>`:`<div class="ph">${t.label[0]}</div>`)}
         <div class="badge-type" style="background:${t.color}">${t.label}</div>
         <div class="badge-status" style="background:${s.color}" title="${s.label}"></div>
+        <button class="badge-fav${i.fav?' on':''}" data-id="${i.id}" title="Favori">${i.fav?'★':'☆'}</button>
         ${i.link?`<a class="badge-link" href="${escapeHtml(i.link)}" target="_blank" rel="noopener" title="Ouvrir le lien" onclick="event.stopPropagation()">🔗</a>`:''}
       </div>
       <div class="card-body">
@@ -892,6 +905,7 @@ function render(){
     </div>`;
   }).join('');
   grid.querySelectorAll('.card').forEach(c=>c.onclick=()=>openDetail(c.dataset.id));
+  grid.querySelectorAll('.badge-fav').forEach(b=>b.onclick=e=>{ e.stopPropagation(); toggleFav(b.dataset.id); });
 }
 
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
@@ -910,6 +924,7 @@ async function openDetail(id){
   $('#dTitle').textContent = i.title;
   $('#dImg').innerHTML = i.image ? `<img src="${i.image}">` : `<div class="ph">${t.label[0]}</div>`;
   renderDetailInfo(i);
+  updateFavBtn(i);
   $('#detailOverlay').classList.add('open');
 
   // Musique / OST : lecture auto à l'ouverture (le clic sur la carte sert de geste utilisateur)
@@ -981,6 +996,16 @@ function renderDetailInfo(i){
   const qp=$('#qProg'); if(qp) qp.onchange=()=>quickSet('prog', +qp.value||0);
   const qa=$('#qAch'); if(qa) qa.onchange=()=>quickSet('ach', +qa.value||0);
 }
+
+async function toggleFav(id){
+  const i = items.find(x=>x.id===id); if(!i) return;
+  i.fav = !i.fav; i.updated = Date.now();
+  await DB.put(i);
+  render();
+  if($('#detailOverlay').classList.contains('open') && detailId===id) updateFavBtn(i);
+  await afterChange();
+}
+function updateFavBtn(i){ const b=$('#dFav'); if(b){ b.textContent = i.fav?'★ Favori':'☆ Favori'; b.classList.toggle('on', !!i.fav); } }
 
 function quickBump(which, delta){
   const i = items.find(x=>x.id===detailId); if(!i) return;
@@ -1172,6 +1197,7 @@ async function save(){
     audioMime: curAudio ? (curAudioMime||'audio/webm') : null,
     audioSha: audioChanged ? undefined : existing?.audioSha,
     audioDirty: audioChanged ? !!curAudio : !!existing?.audioDirty,
+    fav: existing?.fav || false,                       // on conserve le favori lors d'une édition
     created: existing?.created || Date.now(),
     updated: Date.now(),
   };
@@ -1706,6 +1732,8 @@ function openStats(){
   const cards = [];
   cards.push(`<div class="stat-card"><div class="v">${avg}${avg!=='–'?' ★':''}</div><div class="k">Note moyenne</div></div>`);
   cards.push(`<div class="stat-card"><div class="v">${done}</div><div class="k">Terminé(s)</div></div>`);
+  const favN = items.filter(i=>i.fav).length;
+  if(favN) cards.push(`<div class="stat-card"><div class="v">${favN}</div><div class="k">⭐ Favoris</div></div>`);
   if(sumEp)    cards.push(`<div class="stat-card"><div class="v">${sumEp}</div><div class="k">Épisodes vus</div></div>`);
   if(sumTomes) cards.push(`<div class="stat-card"><div class="v">${sumTomes}</div><div class="k">Tomes lus</div></div>`);
   if(games.length){
@@ -1808,6 +1836,7 @@ function bind(){
     const id = detailId; closeDetail();
     await deleteItem(id); toast('🗑 Fiche supprimée');
   };
+  $('#dFav').onclick = ()=>{ if(detailId) toggleFav(detailId); };
   $('#dSound').onclick = ()=>{ const au=$('#dAudio'); if(au.paused){ au.play().catch(()=>{}); $('#dSound').textContent='🔇 Couper'; } else { au.pause(); $('#dSound').textContent='🔊 Écouter'; } };
   let dDownTarget = null;
   $('#detailOverlay').onmousedown = e=>{ dDownTarget = e.target; };
@@ -1849,6 +1878,7 @@ function bind(){
   }
 
   // Recherche / filtres
+  $('#favChip').onclick = ()=>{ filters.fav=!filters.fav; $('#favChip').classList.toggle('active', filters.fav); render(); };
   $('#searchInput').oninput = e=>{ filters.q=e.target.value; render(); };
   $('#statusFilter').onchange = e=>{ filters.status=e.target.value; render(); };
   $('#tagFilter').onchange = e=>{ filters.tag=e.target.value; render(); };
