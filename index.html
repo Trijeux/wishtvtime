@@ -156,6 +156,10 @@
   .tags-input input{background:none;border:none;color:var(--txt);outline:none;flex:1;min-width:80px;font-size:14px;padding:3px}
   .tag-pill{background:var(--accent); color:#fff; font-size:12px; padding:3px 9px; border-radius:14px; display:flex; gap:6px; align-items:center}
   .tag-pill b{cursor:pointer; font-weight:700}
+  .sugg{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px}
+  .sugg button{font-size:12px; padding:4px 11px; border-radius:14px; cursor:pointer;
+    background:var(--card); border:1px solid var(--line); color:var(--txt-dim); transition:.15s}
+  .sugg button:hover{color:#fff; background:var(--accent); border-color:var(--accent)}
   .modal-actions{display:flex; gap:10px; justify-content:space-between; margin-top:22px}
   .modal-actions .right{display:flex; gap:10px}
   .btn-danger{background:transparent; border:1px solid var(--bad); color:var(--bad)}
@@ -274,9 +278,18 @@
       <label id="progLabel">Progression</label>
       <div class="prog-fields">
         <input type="number" id="fProgCur" min="0" placeholder="0">
-        <span class="slash">/</span>
+        <span class="slash" id="progSlash">/</span>
         <input type="number" id="fProgTotal" min="0" placeholder="?">
         <span class="prog-unit" id="progUnit"></span>
+      </div>
+    </div>
+    <div class="field" id="achField" style="display:none">
+      <label>🏆 Succès débloqués</label>
+      <div class="prog-fields">
+        <input type="number" id="fAchCur" min="0" placeholder="0">
+        <span class="slash">/</span>
+        <input type="number" id="fAchTotal" min="0" placeholder="?">
+        <span class="prog-unit">succès</span>
       </div>
     </div>
     <div class="row2">
@@ -292,14 +305,10 @@
     <div class="row2">
       <div class="field">
         <label>Plateforme</label>
-        <input type="text" id="fPlatform" list="platformList" placeholder="ex : Netflix, Steam…">
-        <datalist id="platformList">
-          <option value="Netflix"><option value="Crunchyroll"><option value="ADN"><option value="Disney+">
-          <option value="Prime Video"><option value="Wakanim"><option value="Max"><option value="Apple TV+">
-          <option value="Steam"><option value="Epic Games"><option value="GOG"><option value="Game Pass">
-          <option value="Nintendo Switch"><option value="PS5"><option value="PS4"><option value="Xbox">
-          <option value="PC"><option value="Mobile"><option value="Cinéma"><option value="Blu-ray / DVD">
-        </datalist>
+        <div class="tags-input" id="platformBox">
+          <input type="text" id="platformEntry" placeholder="Plateforme + Entrée, ou clique ci-dessous…">
+        </div>
+        <div class="sugg" id="platformSugg"></div>
       </div>
       <div class="field">
         <label>Lien</label>
@@ -422,6 +431,14 @@ const statusById = id => STATUSES.find(s=>s.id===id) || STATUSES[0];
 // Unité de progression selon le type (libellé court affiché à côté des compteurs)
 const UNIT = {anime:'épisodes', manga:'tomes', jeu:'%', film:'épisodes', autre:'éléments'};
 const unitOf = type => UNIT[type] || '';
+// Suggestions de plateformes adaptées à chaque type (saisie libre quand même possible)
+const PLATFORMS = {
+  anime: ['Crunchyroll','ADN','Netflix','Disney+','Prime Video','Wakanim','Max','YouTube'],
+  manga: ['Glénat','Kana','Ki-oon','Kurokawa','Pika','Delcourt/Tonkam','MangaDex','Webtoon','Papier'],
+  jeu:   ['Steam','Epic Games','GOG','Game Pass','Nintendo Switch','PS5','PS4','Xbox Series','Xbox One','PC','Mobile'],
+  film:  ['Netflix','Disney+','Prime Video','Max','Apple TV+','Canal+','Cinéma','Blu-ray / DVD'],
+  autre: [],
+};
 
 // ---- IndexedDB (mini wrapper) ----
 const DB = {
@@ -462,6 +479,7 @@ let curImage = null;     // dataURL
 let imageChanged = false;// l'image a-t-elle été modifiée dans ce formulaire ?
 let curRating = 0;
 let curTags = [];
+let curPlatforms = [];
 const filters = {q:'', type:'', status:'', tag:'', sort:'recent'};
 
 // Suppressions : id -> timestamp(ms). Sert à propager les suppressions entre appareils.
@@ -550,14 +568,25 @@ function render(){
   grid.innerHTML = list.map(i=>{
     const t=typeById(i.type), s=statusById(i.status);
     const stars = i.rating? '★'.repeat(i.rating)+'☆'.repeat(5-i.rating) : '';
-    // Progression (barre si un total est défini, sinon simple compteur)
+    // Progression : pour un jeu = % seul ; sinon barre actuel/total (ou simple compteur)
+    const isGame = i.type==='jeu';
     const pc = i.progCur||0, pt = i.progTotal||0, u = unitOf(i.type);
     let progHtml = '';
-    if(pt>0){
+    if(isGame){
+      if(pc>0){ const pct = Math.min(100, pc);
+        progHtml = `<div class="prog-wrap"><div class="prog-text"><span>Progression</span><span>${pct}%</span></div><div class="prog-bar"><i style="width:${pct}%"></i></div></div>`; }
+    } else if(pt>0){
       const pct = Math.min(100, Math.round(pc/pt*100));
       progHtml = `<div class="prog-wrap"><div class="prog-text"><span>${pc}/${pt}${u?' '+u:''}</span><span>${pct}%</span></div><div class="prog-bar"><i style="width:${pct}%"></i></div></div>`;
     } else if(pc>0){
       progHtml = `<div class="prog-wrap"><div class="prog-text"><span>${pc}${u?' '+u:''}</span></div></div>`;
+    }
+    // Succès (jeux uniquement)
+    let achHtml = '';
+    if(isGame && (i.achTotal>0 || i.achCur>0)){
+      const ac = i.achCur||0, at = i.achTotal||0;
+      const apct = at>0 ? Math.min(100, Math.round(ac/at*100)) : 0;
+      achHtml = `<div class="prog-wrap"><div class="prog-text"><span>🏆 ${ac}${at?'/'+at:''} succès</span>${at?`<span>${apct}%</span>`:''}</div>${at?`<div class="prog-bar"><i style="width:${apct}%"></i></div>`:''}</div>`;
     }
     // Plateforme / année
     const subs = [];
@@ -579,6 +608,7 @@ function render(){
         </div>
         ${subHtml}
         ${progHtml}
+        ${achHtml}
         ${(i.tags&&i.tags.length)?`<div class="card-tags">${i.tags.slice(0,3).map(x=>`<span class="tag">${escapeHtml(x)}</span>`).join('')}</div>`:''}
       </div>
     </div>`;
@@ -592,8 +622,47 @@ function escapeHtml(s){ return (s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'
 //  MODAL
 // =========================================================
 function setRating(v){ curRating=v; $('#ratePick').querySelectorAll('span').forEach(s=>s.classList.toggle('on', +s.dataset.v<=v)); }
-// Met à jour l'unité affichée à côté des compteurs de progression, selon le type choisi
-function updateProgUnit(){ $('#progUnit').textContent = unitOf($('#fType').value); }
+// Adapte le formulaire au type choisi : unité de progression, mode % + succès pour les jeux,
+// et liste de suggestions de plateformes pertinente.
+function updateFormType(){
+  const type = $('#fType').value;
+  const isGame = type==='jeu';
+  // Progression : pour un jeu = simple %, sinon actuel/total avec unité
+  $('#progLabel').textContent  = isGame ? 'Progression (%)' : 'Progression';
+  $('#progUnit').textContent   = isGame ? '%' : unitOf(type);
+  $('#progSlash').style.display  = isGame ? 'none' : '';
+  $('#fProgTotal').style.display = isGame ? 'none' : '';
+  $('#fProgCur').max = isGame ? 100 : '';
+  // Succès : uniquement pour les jeux
+  $('#achField').style.display = isGame ? 'block' : 'none';
+  // Plateformes : on régénère les suggestions cliquables selon le type
+  renderPlatforms();
+}
+
+// Affiche les pastilles de plateformes choisies + les suggestions cliquables
+// (plateformes du type courant non encore sélectionnées). Saisie libre possible.
+function renderPlatforms(){
+  const box = $('#platformBox'), entry = $('#platformEntry');
+  box.querySelectorAll('.tag-pill').forEach(e=>e.remove());
+  curPlatforms.forEach(p=>{
+    const el = document.createElement('span'); el.className='tag-pill';
+    el.innerHTML = `${escapeHtml(p)} <b>✕</b>`;
+    el.querySelector('b').onclick = ()=>{ curPlatforms = curPlatforms.filter(x=>x!==p); renderPlatforms(); };
+    box.insertBefore(el, entry);
+  });
+  const all = PLATFORMS[$('#fType').value] || [];
+  const chosen = new Set(curPlatforms.map(s=>s.toLowerCase()));
+  const sugg = $('#platformSugg');
+  sugg.innerHTML = all.filter(p=>!chosen.has(p.toLowerCase()))
+    .map(p=>`<button type="button" data-p="${escapeHtml(p)}">+ ${escapeHtml(p)}</button>`).join('');
+  sugg.querySelectorAll('button').forEach(b=>b.onclick=()=>addPlatform(b.dataset.p));
+}
+function addPlatform(name){
+  name = (name||'').trim();
+  if(name && !curPlatforms.some(x=>x.toLowerCase()===name.toLowerCase())) curPlatforms.push(name);
+  $('#platformEntry').value = '';
+  renderPlatforms();
+}
 function setImage(data){
   curImage = data;
   const prev=$('#imgPreview'), ph=$('#imgPlaceholder'), clr=$('#imgClear');
@@ -620,11 +689,14 @@ function openModal(id){
   $('#fComment').value = item?.comment || '';
   $('#fProgCur').value   = item?.progCur || '';
   $('#fProgTotal').value = item?.progTotal || '';
+  $('#fAchCur').value    = item?.achCur || '';
+  $('#fAchTotal').value  = item?.achTotal || '';
   $('#fYear').value      = item?.year || '';
   $('#fDateDone').value  = item?.dateDone || '';
-  $('#fPlatform').value  = item?.platform || '';
+  curPlatforms = item?.platform ? item.platform.split(',').map(s=>s.trim()).filter(Boolean) : [];
+  $('#platformEntry').value = '';
   $('#fLink').value      = item?.link || '';
-  updateProgUnit();
+  updateFormType();
   curTags = item?.tags ? [...item.tags] : [];
   setRating(item?.rating || 0);
   setImage(item?.image || null);
@@ -651,19 +723,23 @@ async function save(){
   // Lien : on ajoute https:// si l'utilisateur a oublié le protocole
   let link = $('#fLink').value.trim();
   if(link && !/^https?:\/\//i.test(link)) link = 'https://'+link;
+  const type = $('#fType').value;
+  const isGame = type==='jeu';
   const item = {
     id,
     title,
-    type: $('#fType').value,
+    type,
     status: $('#fStatus').value,
     rating: curRating,
     tags: curTags,
     comment: $('#fComment').value.trim(),
     progCur:   +$('#fProgCur').value   || 0,
-    progTotal: +$('#fProgTotal').value || 0,
+    progTotal: isGame ? 100 : (+$('#fProgTotal').value || 0),  // jeu = pourcentage (total fixe 100)
+    achCur:    isGame ? (+$('#fAchCur').value   || 0) : 0,
+    achTotal:  isGame ? (+$('#fAchTotal').value || 0) : 0,
     year:      +$('#fYear').value      || null,
     dateDone:  $('#fDateDone').value   || '',
-    platform:  $('#fPlatform').value.trim(),
+    platform:  curPlatforms.join(', '),
     link,
     image: curImage,                                   // dataURL (cache local, pas dans data.json)
     imagePath,                                         // référence du fichier (par empreinte de contenu)
@@ -1083,8 +1159,17 @@ function bind(){
   $('#cancelBtn').onclick = closeModal;
   $('#saveBtn').onclick = save;
   $('#deleteBtn').onclick = removeItem;
-  $('#fType').onchange = updateProgUnit;
-  $('#overlay').onclick = e=>{ if(e.target===$('#overlay')) closeModal(); };
+  $('#fType').onchange = updateFormType;
+  // Plateforme (étiquettes) : Entrée ou virgule = ajoute ; Retour arrière (champ vide) = retire la dernière
+  $('#platformEntry').onkeydown = e=>{
+    if(e.key==='Enter' || e.key===','){ e.preventDefault(); addPlatform(e.target.value.replace(/,$/,'')); }
+    else if(e.key==='Backspace' && !e.target.value && curPlatforms.length){ curPlatforms.pop(); renderPlatforms(); }
+  };
+  // Fermer en cliquant sur le fond — mais seulement si le clic a COMMENCÉ sur le fond
+  // (évite de fermer quand on sélectionne du texte en glissant et qu'on relâche dehors).
+  let downTarget = null;
+  $('#overlay').onmousedown = e=>{ downTarget = e.target; };
+  $('#overlay').onclick = e=>{ if(e.target===$('#overlay') && downTarget===$('#overlay')) closeModal(); };
 
   // Recherche / filtres
   $('#searchInput').oninput = e=>{ filters.q=e.target.value; render(); };
@@ -1120,7 +1205,9 @@ function bind(){
   $('#syncBtn').onclick = ()=>SYNC.run(false);
   $('#settingsBtn').onclick = openSync;
   $('#closeSync').onclick = ()=>$('#syncOverlay').classList.remove('open');
-  $('#syncOverlay').onclick = e=>{ if(e.target===$('#syncOverlay')) $('#syncOverlay').classList.remove('open'); };
+  let syncDownTarget = null;
+  $('#syncOverlay').onmousedown = e=>{ syncDownTarget = e.target; };
+  $('#syncOverlay').onclick = e=>{ if(e.target===$('#syncOverlay') && syncDownTarget===$('#syncOverlay')) $('#syncOverlay').classList.remove('open'); };
   $('#cfgMode').onchange = e=>{ SYNC.cfg.mode = e.target.value; updateModeUI(); };
   $('#cfgPickFile').onclick = async ()=>{ await LOCAL.pick(); updateModeUI(); };
   $('#localSaveBtn').onclick = ()=>LOCAL.downloadSave();
