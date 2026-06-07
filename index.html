@@ -214,10 +214,20 @@
     <select class="mini" id="tagFilter">
       <option value="">Tous les tags</option>
     </select>
+    <select class="mini" id="platformFilter">
+      <option value="">Toutes les plateformes</option>
+    </select>
+    <select class="mini" id="yearFilter">
+      <option value="">Toutes les années</option>
+    </select>
     <select class="mini" id="sortBy">
       <option value="recent">Récents d'abord</option>
       <option value="title">Titre A→Z</option>
       <option value="rating">Mieux notés</option>
+      <option value="year_desc">Année ↓ (récent)</option>
+      <option value="year_asc">Année ↑ (ancien)</option>
+      <option value="prog_desc">Progression ↓ (avancés)</option>
+      <option value="prog_asc">Progression ↑ (à reprendre)</option>
     </select>
   </div>
 </header>
@@ -480,7 +490,7 @@ let imageChanged = false;// l'image a-t-elle été modifiée dans ce formulaire 
 let curRating = 0;
 let curTags = [];
 let curPlatforms = [];
-const filters = {q:'', type:'', status:'', tag:'', sort:'recent'};
+const filters = {q:'', type:'', status:'', tag:'', platform:'', year:'', sort:'recent'};
 
 // Suppressions : id -> timestamp(ms). Sert à propager les suppressions entre appareils.
 let tombstones = {};
@@ -537,22 +547,48 @@ function buildSelectors(){
   $('#fStatus').innerHTML = STATUSES.map(s=>`<option value="${s.id}">${s.label}</option>`).join('');
 }
 
+// Liste des plateformes d'une fiche (le champ est stocké « A, B »)
+const platsOf = i => (i.platform||'').split(',').map(s=>s.trim()).filter(Boolean);
+// Avancement normalisé 0→1 (jeu = %/100 ; sinon actuel/total) pour le tri par progression
+function progRatio(i){
+  if(i.type==='jeu') return Math.min(1,(i.progCur||0)/100);
+  if(i.progTotal>0)  return Math.min(1,(i.progCur||0)/i.progTotal);
+  return 0;
+}
+
 function refreshTagFilter(){
-  const set = new Set();
-  items.forEach(i=>(i.tags||[]).forEach(t=>set.add(t)));
-  const cur = filters.tag;
+  // Tags
+  const tagSet = new Set();
+  items.forEach(i=>(i.tags||[]).forEach(t=>tagSet.add(t)));
   $('#tagFilter').innerHTML = `<option value="">Tous les tags</option>` +
-    [...set].sort().map(t=>`<option value="${t}" ${t===cur?'selected':''}>${t}</option>`).join('');
+    [...tagSet].sort().map(t=>`<option value="${escapeHtml(t)}" ${t===filters.tag?'selected':''}>${escapeHtml(t)}</option>`).join('');
+  // Plateformes
+  const platSet = new Set();
+  items.forEach(i=>platsOf(i).forEach(p=>platSet.add(p)));
+  $('#platformFilter').innerHTML = `<option value="">Toutes les plateformes</option>` +
+    [...platSet].sort().map(p=>`<option value="${escapeHtml(p)}" ${p===filters.platform?'selected':''}>${escapeHtml(p)}</option>`).join('');
+  // Années
+  const yearSet = new Set();
+  items.forEach(i=>{ if(i.year) yearSet.add(i.year); });
+  $('#yearFilter').innerHTML = `<option value="">Toutes les années</option>` +
+    [...yearSet].sort((a,b)=>b-a).map(y=>`<option value="${y}" ${String(y)===filters.year?'selected':''}>${y}</option>`).join('');
 }
 
 function applyFilters(){
   let list = items.slice();
   if(filters.q){ const q=filters.q.toLowerCase(); list=list.filter(i=>i.title.toLowerCase().includes(q)); }
-  if(filters.type)   list = list.filter(i=>i.type===filters.type);
-  if(filters.status) list = list.filter(i=>i.status===filters.status);
-  if(filters.tag)    list = list.filter(i=>(i.tags||[]).includes(filters.tag));
-  if(filters.sort==='title')  list.sort((a,b)=>a.title.localeCompare(b.title));
-  else if(filters.sort==='rating') list.sort((a,b)=>(b.rating||0)-(a.rating||0));
+  if(filters.type)     list = list.filter(i=>i.type===filters.type);
+  if(filters.status)   list = list.filter(i=>i.status===filters.status);
+  if(filters.tag)      list = list.filter(i=>(i.tags||[]).includes(filters.tag));
+  if(filters.platform) list = list.filter(i=>platsOf(i).includes(filters.platform));
+  if(filters.year)     list = list.filter(i=>String(i.year||'')===filters.year);
+  const s = filters.sort;
+  if(s==='title')       list.sort((a,b)=>a.title.localeCompare(b.title));
+  else if(s==='rating') list.sort((a,b)=>(b.rating||0)-(a.rating||0));
+  else if(s==='year_desc') list.sort((a,b)=>(b.year||-Infinity)-(a.year||-Infinity));
+  else if(s==='year_asc')  list.sort((a,b)=>(a.year||Infinity)-(b.year||Infinity));
+  else if(s==='prog_desc') list.sort((a,b)=>progRatio(b)-progRatio(a));
+  else if(s==='prog_asc')  list.sort((a,b)=>progRatio(a)-progRatio(b));
   else list.sort((a,b)=>b.created-a.created);
   return list;
 }
@@ -1175,6 +1211,8 @@ function bind(){
   $('#searchInput').oninput = e=>{ filters.q=e.target.value; render(); };
   $('#statusFilter').onchange = e=>{ filters.status=e.target.value; render(); };
   $('#tagFilter').onchange = e=>{ filters.tag=e.target.value; render(); };
+  $('#platformFilter').onchange = e=>{ filters.platform=e.target.value; render(); };
+  $('#yearFilter').onchange = e=>{ filters.year=e.target.value; render(); };
   $('#sortBy').onchange = e=>{ filters.sort=e.target.value; render(); };
 
   // Image
