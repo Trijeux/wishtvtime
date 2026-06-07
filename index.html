@@ -319,7 +319,6 @@
       <div class="steps">
         <b>Sauvegarde locale :</b> tes fiches restent sur cet appareil. Choisis un fichier — l'app y enregistre <b>automatiquement</b> à chaque modification.
         <br>💡 Astuce : place ce fichier dans un dossier <b>Google Drive / OneDrive</b> et il se synchronisera entre tes appareils via ce service.
-        <br>⚠️ Sur <b>téléphone</b>, choisir un fichier n'est pas possible — utilise les boutons <b>Export / Import</b> à la place.
       </div>
       <div class="field">
         <label>Fichier de sauvegarde</label>
@@ -327,6 +326,7 @@
           <button class="btn" id="cfgPickFile" type="button">📁 Choisir le fichier…</button>
           <span id="cfgFileName" class="help" style="margin-top:0">Aucun fichier choisi</span>
         </div>
+        <div id="localSupportNote" class="help"></div>
       </div>
     </div>
 
@@ -596,7 +596,7 @@ async function save(){
   if(existing){ Object.assign(existing,item); } else { items.push(item); }
   closeModal(); render();
   toast(existing ? '✅ Fiche modifiée' : '✅ Fiche ajoutée');
-  afterChange();
+  await afterChange();
 }
 async function removeItem(){
   if(!editingId) return;
@@ -606,7 +606,7 @@ async function removeItem(){
   await DB.del(editingId);
   items = items.filter(i=>i.id!==editingId);
   closeModal(); render(); toast('🗑 Fiche supprimée');
-  afterChange();
+  await afterChange();
 }
 
 // =========================================================
@@ -640,7 +640,7 @@ function importData(file){
       }
       items = await DB.all();
       render(); toast(`⬆️ ${incoming.length} fiche(s) importée(s)`);
-      afterChange();
+      await afterChange();
     }catch(err){ toast('❌ Fichier invalide'); }
   };
   fr.readAsText(file);
@@ -887,7 +887,7 @@ const LOCAL = {
       // Navigateur qui bloque / ne supporte pas l'écriture directe (Firefox, Safari, mobile)
       this.fallback = true; await DB.meta('localFallback', true);
       this.downloadSave();
-      toast('💾 Écriture auto non dispo ici — utilise le bouton 💾 pour enregistrer.');
+      toast('💾 Sauvegarde locale activée (via le bouton 💾).');
       return;
     }
     try{
@@ -932,8 +932,9 @@ const LOCAL = {
 };
 
 // Aiguillage après chaque modification, selon le mode choisi
-function afterChange(){
-  if(SYNC.cfg.mode==='local') LOCAL.autoSave();
+async function afterChange(){
+  // En local : on écrit dans le geste utilisateur -> l'autorisation est conservée et la sauvegarde continue
+  if(SYNC.cfg.mode==='local') await LOCAL.save();
   else SYNC.autoPush();
 }
 
@@ -949,6 +950,10 @@ function updateModeUI(){
   $('#cfgForget').style.display  = (!local && SYNC.configured()) ? 'inline-flex' : 'none';
   if(local){
     $('#cfgFileName').textContent = LOCAL.name() ? ('📄 '+LOCAL.name()) : 'Aucun fichier choisi';
+    $('#cfgPickFile').style.display = LOCAL.supported() ? 'inline-flex' : 'none';
+    $('#localSupportNote').innerHTML = LOCAL.supported()
+      ? '✅ Ce navigateur enregistre <b>automatiquement</b> dans le fichier choisi (l\'emplacement est mémorisé).'
+      : '⚠️ Ce navigateur (ex : <b>Firefox</b>) ne mémorise pas l\'emplacement du fichier. Utilise le bouton <b>💾</b> pour enregistrer une copie, ou le <b>mode GitHub</b> pour une synchro auto.';
   } else {
     SYNC.setDot(SYNC.configured() ? 'ok' : 'off');
   }
