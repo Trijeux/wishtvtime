@@ -270,36 +270,65 @@
 <!-- Modal Synchro -->
 <div class="overlay" id="syncOverlay">
   <div class="modal">
-    <h2><span>⚙️ Synchronisation GitHub</span><button class="x" id="closeSync">✕</button></h2>
-    <div class="steps">
-      <b>Comment ça marche :</b> tes fiches sont sauvegardées dans un dépôt GitHub <b>privé</b>.
-      Mets les mêmes infos ci-dessous sur ton PC et ton téléphone → les deux restent synchronisés.
-      <ol>
-        <li>Crée un dépôt <b>privé</b> sur GitHub (ex : <code>wishtvtime-data</code>)</li>
-        <li>Crée un jeton : GitHub → Settings → Developer settings → <b>Personal access tokens (classic)</b> → coche la case <code>repo</code></li>
-        <li>Colle le tout ci-dessous, puis <b>Tester la connexion</b></li>
-      </ol>
-    </div>
+    <h2><span>⚙️ Paramètres</span><button class="x" id="closeSync">✕</button></h2>
+
     <div class="field">
-      <label>Propriétaire (ton pseudo GitHub)</label>
-      <input type="text" id="cfgOwner" placeholder="ex : trijeux">
+      <label>Mode de sauvegarde</label>
+      <select id="cfgMode">
+        <option value="github">🔄 Synchro GitHub (automatique entre tes appareils)</option>
+        <option value="local">🖥️ Sauvegarde locale (un fichier sur cet appareil)</option>
+      </select>
     </div>
-    <div class="row2">
-      <div class="field">
-        <label>Nom du dépôt</label>
-        <input type="text" id="cfgRepo" placeholder="ex : wishtvtime-data">
+
+    <!-- ===== Mode GitHub ===== -->
+    <div id="githubSection">
+      <div class="steps">
+        <b>Comment ça marche :</b> tes fiches sont sauvegardées dans un dépôt GitHub <b>privé</b>.
+        Mets les mêmes infos ci-dessous sur ton PC et ton téléphone → les deux restent synchronisés.
+        <ol>
+          <li>Crée un dépôt <b>privé</b> sur GitHub (ex : <code>wishtvtime-data</code>)</li>
+          <li>Crée un jeton : GitHub → Settings → Developer settings → <b>Personal access tokens (classic)</b> → coche la case <code>repo</code></li>
+          <li>Colle le tout ci-dessous, puis <b>Tester la connexion</b></li>
+        </ol>
       </div>
       <div class="field">
-        <label>Branche</label>
-        <input type="text" id="cfgBranch" placeholder="main" value="main">
+        <label>Propriétaire (ton pseudo GitHub)</label>
+        <input type="text" id="cfgOwner" placeholder="ex : trijeux">
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>Nom du dépôt</label>
+          <input type="text" id="cfgRepo" placeholder="ex : wishtvtime-data">
+        </div>
+        <div class="field">
+          <label>Branche</label>
+          <input type="text" id="cfgBranch" placeholder="main" value="main">
+        </div>
+      </div>
+      <div class="field">
+        <label>Jeton d'accès (token)</label>
+        <input type="password" id="cfgToken" placeholder="ghp_...">
+        <div class="help">🔒 Le jeton reste <b>uniquement sur cet appareil</b> (jamais envoyé ailleurs que GitHub). Garde ton dépôt privé.</div>
+      </div>
+      <label class="switch"><input type="checkbox" id="cfgAuto"> Synchroniser automatiquement (à l'ouverture + après chaque modif)</label>
+    </div>
+
+    <!-- ===== Mode local ===== -->
+    <div id="localSection" style="display:none">
+      <div class="steps">
+        <b>Sauvegarde locale :</b> tes fiches restent sur cet appareil. Choisis un fichier — l'app y enregistre <b>automatiquement</b> à chaque modification.
+        <br>💡 Astuce : place ce fichier dans un dossier <b>Google Drive / OneDrive</b> et il se synchronisera entre tes appareils via ce service.
+        <br>⚠️ Sur <b>téléphone</b>, choisir un fichier n'est pas possible — utilise les boutons <b>Export / Import</b> à la place.
+      </div>
+      <div class="field">
+        <label>Fichier de sauvegarde</label>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
+          <button class="btn" id="cfgPickFile" type="button">📁 Choisir le fichier…</button>
+          <span id="cfgFileName" class="help" style="margin-top:0">Aucun fichier choisi</span>
+        </div>
       </div>
     </div>
-    <div class="field">
-      <label>Jeton d'accès (token)</label>
-      <input type="password" id="cfgToken" placeholder="ghp_...">
-      <div class="help">🔒 Le jeton reste <b>uniquement sur cet appareil</b> (jamais envoyé ailleurs que GitHub). Garde ton dépôt privé.</div>
-    </div>
-    <label class="switch"><input type="checkbox" id="cfgAuto"> Synchroniser automatiquement (à l'ouverture + après chaque modif)</label>
+
     <div class="sync-status" id="syncStatus"></div>
     <div class="modal-actions">
       <button class="btn btn-danger" id="cfgForget" style="display:none">Oublier ce compte</button>
@@ -343,11 +372,13 @@ const DB = {
   _db:null,
   open(){
     return new Promise((res,rej)=>{
-      const r = indexedDB.open('macollection', 1);
+      const r = indexedDB.open('macollection', 2);
       r.onupgradeneeded = e => {
         const db = e.target.result;
         if(!db.objectStoreNames.contains('items'))
           db.createObjectStore('items', {keyPath:'id'});
+        if(!db.objectStoreNames.contains('meta'))
+          db.createObjectStore('meta');               // clés libres (ex: handle du fichier local)
       };
       r.onsuccess = e => { this._db = e.target.result; res(); };
       r.onerror = e => rej(e);
@@ -358,6 +389,14 @@ const DB = {
     c.onsuccess=e=>{const cur=e.target.result; if(cur){out.push(cur.value);cur.continue();}else res(out);}; }); },
   put(item){ return new Promise((res)=>{ this._store('readwrite').put(item).onsuccess=()=>res(); }); },
   del(id){ return new Promise((res)=>{ this._store('readwrite').delete(id).onsuccess=()=>res(); }); },
+  // Lecture/écriture d'une métadonnée (val undefined = lecture)
+  meta(key, val){
+    return new Promise((res)=>{
+      const st = this._db.transaction('meta','readwrite').objectStore('meta');
+      if(val===undefined){ const r=st.get(key); r.onsuccess=()=>res(r.result); }
+      else { st.put(val, key).onsuccess=()=>res(); }
+    });
+  },
 };
 
 // ---- État ----
@@ -556,7 +595,7 @@ async function save(){
   if(existing){ Object.assign(existing,item); } else { items.push(item); }
   closeModal(); render();
   toast(existing ? '✅ Fiche modifiée' : '✅ Fiche ajoutée');
-  SYNC.autoPush();
+  afterChange();
 }
 async function removeItem(){
   if(!editingId) return;
@@ -566,7 +605,7 @@ async function removeItem(){
   await DB.del(editingId);
   items = items.filter(i=>i.id!==editingId);
   closeModal(); render(); toast('🗑 Fiche supprimée');
-  SYNC.autoPush();
+  afterChange();
 }
 
 // =========================================================
@@ -600,6 +639,7 @@ function importData(file){
       }
       items = await DB.all();
       render(); toast(`⬆️ ${incoming.length} fiche(s) importée(s)`);
+      afterChange();
     }catch(err){ toast('❌ Fichier invalide'); }
   };
   fr.readAsText(file);
@@ -610,7 +650,7 @@ function importData(file){
 //  Stocke tes fiches dans un dépôt privé (data.json) via l'API GitHub.
 // =========================================================
 const SYNC = {
-  cfg:{owner:'', repo:'', branch:'main', token:'', auto:false},
+  cfg:{mode:'github', owner:'', repo:'', branch:'main', token:'', auto:false},
   busy:false,
   load(){ try{ Object.assign(this.cfg, JSON.parse(localStorage.getItem('mc_sync')||'{}')); }catch(e){} },
   store(){ localStorage.setItem('mc_sync', JSON.stringify(this.cfg)); },
@@ -815,25 +855,106 @@ const SYNC = {
   },
 };
 
+// =========================================================
+//  SAUVEGARDE LOCALE (fichier choisi par l'utilisateur)
+//  Écrit automatiquement dans un fichier à chaque modification (PC uniquement).
+// =========================================================
+const LOCAL = {
+  handle:null,
+  supported(){ return 'showSaveFilePicker' in window; },
+  name(){ return this.handle ? this.handle.name : null; },
+  async restore(){ try{ this.handle = await DB.meta('localFile') || null; }catch(e){ this.handle=null; } },
+  async _perm(mode){
+    if(!this.handle) return false;
+    const opts={mode};
+    if((await this.handle.queryPermission(opts))==='granted') return true;
+    try{ return (await this.handle.requestPermission(opts))==='granted'; }catch(e){ return false; }
+  },
+  async pick(){
+    if(!this.supported()){ toast('⚠️ Ce navigateur ne permet pas de choisir un fichier. Utilise Export/Import.'); return; }
+    try{
+      this.handle = await window.showSaveFilePicker({
+        suggestedName:'ma-collection.json',
+        types:[{description:'Sauvegarde WishTvTime', accept:{'application/json':['.json']}}]
+      });
+    }catch(e){ return; }                       // l'utilisateur a annulé
+    await DB.meta('localFile', this.handle);
+    await this.loadMerge();                     // récupère les fiches déjà présentes dans le fichier
+    await this.save();                          // puis écrit l'état courant
+    toast('💾 Fichier de sauvegarde défini');
+  },
+  _payload(){
+    return JSON.stringify({app:'WishTvTime', version:1, items,
+      deleted:Object.entries(tombstones).map(([id,at])=>({id,at}))}, null, 2);
+  },
+  async save(){
+    if(this.handle && await this._perm('readwrite')){
+      try{ const w = await this.handle.createWritable(); await w.write(this._payload()); await w.close(); }
+      catch(e){ console.error('[LOCAL] save', e); }
+    }
+  },
+  async loadMerge(){
+    if(!this.handle || !(await this._perm('readwrite'))) return;
+    let txt='';
+    try{ txt = await (await this.handle.getFile()).text(); }catch(e){ return; }
+    if(!txt.trim()) return;
+    let data; try{ data = JSON.parse(txt); }catch(e){ return; }
+    const incoming = Array.isArray(data) ? data : (data.items||[]);
+    const inDel = (data && data.deleted) || [];
+    for(const d of inDel){ if(d && d.id && (!tombstones[d.id] || d.at>tombstones[d.id])) tombstones[d.id]=d.at; }
+    saveTomb();
+    const merged = SYNC.merge(items, incoming);
+    for(const id in tombstones){ await DB.del(id); }
+    for(const it of merged) await DB.put(it);
+    items = merged; render();
+  },
+  _t:null,
+  autoSave(){ clearTimeout(this._t); this._t = setTimeout(()=>this.save(), 800); },
+};
+
+// Aiguillage après chaque modification, selon le mode choisi
+function afterChange(){
+  if(SYNC.cfg.mode==='local') LOCAL.autoSave();
+  else SYNC.autoPush();
+}
+
+// Affiche/masque les sections + le bouton 🔄 selon le mode
+function updateModeUI(){
+  const local = SYNC.cfg.mode==='local';
+  $('#githubSection').style.display = local ? 'none' : 'block';
+  $('#localSection').style.display  = local ? 'block' : 'none';
+  $('#cfgTest').style.display    = local ? 'none' : 'inline-flex';
+  $('#cfgSyncNow').style.display = local ? 'none' : 'inline-flex';
+  $('#syncBtn').style.display    = local ? 'none' : 'inline-flex';   // pas de bouton 🔄 en mode local
+  $('#cfgForget').style.display  = (!local && SYNC.configured()) ? 'inline-flex' : 'none';
+  if(local){
+    $('#cfgFileName').textContent = LOCAL.name() ? ('📄 '+LOCAL.name()) : 'Aucun fichier choisi';
+  } else {
+    SYNC.setDot(SYNC.configured() ? 'ok' : 'off');
+  }
+}
+
 function openSync(){
   SYNC.load();
+  $('#cfgMode').value  = SYNC.cfg.mode||'github';
   $('#cfgOwner').value = SYNC.cfg.owner||'';
   $('#cfgRepo').value  = SYNC.cfg.repo||'';
   $('#cfgBranch').value= SYNC.cfg.branch||'main';
   $('#cfgToken').value = SYNC.cfg.token||'';
   $('#cfgAuto').checked= !!SYNC.cfg.auto;
-  $('#cfgForget').style.display = SYNC.configured()?'inline-flex':'none';
   SYNC.status(SYNC.cfg.last? 'Dernière synchro : '+new Date(SYNC.cfg.last).toLocaleString() : '');
+  updateModeUI();
   $('#syncOverlay').classList.add('open');
 }
 function saveSyncCfg(){
+  SYNC.cfg.mode  = $('#cfgMode').value;
   SYNC.cfg.owner = $('#cfgOwner').value.trim();
   SYNC.cfg.repo  = $('#cfgRepo').value.trim();
   SYNC.cfg.branch= $('#cfgBranch').value.trim()||'main';
   SYNC.cfg.token = $('#cfgToken').value.trim();
   SYNC.cfg.auto  = $('#cfgAuto').checked;
   SYNC.store();
-  SYNC.setDot(SYNC.configured()?'ok':'off');
+  updateModeUI();
   toast('✅ Réglages enregistrés');
 }
 
@@ -883,10 +1004,12 @@ function bind(){
   $('#settingsBtn').onclick = openSync;
   $('#closeSync').onclick = ()=>$('#syncOverlay').classList.remove('open');
   $('#syncOverlay').onclick = e=>{ if(e.target===$('#syncOverlay')) $('#syncOverlay').classList.remove('open'); };
+  $('#cfgMode').onchange = e=>{ SYNC.cfg.mode = e.target.value; updateModeUI(); };
+  $('#cfgPickFile').onclick = async ()=>{ await LOCAL.pick(); updateModeUI(); };
   $('#cfgTest').onclick = ()=>{ saveSyncCfg(); SYNC.test(); };
   $('#cfgSyncNow').onclick = ()=>{ saveSyncCfg(); SYNC.run(false); };
   $('#cfgSave').onclick = ()=>{ saveSyncCfg(); $('#syncOverlay').classList.remove('open'); };
-  $('#cfgForget').onclick = ()=>{ if(confirm('Oublier le compte sur cet appareil ? (tes fiches restent)')){ localStorage.removeItem('mc_sync'); SYNC.cfg={owner:'',repo:'',branch:'main',token:'',auto:false}; SYNC.setDot('off'); $('#syncOverlay').classList.remove('open'); toast('Compte oublié'); } };
+  $('#cfgForget').onclick = ()=>{ if(confirm('Oublier le compte sur cet appareil ? (tes fiches restent)')){ SYNC.cfg.owner=''; SYNC.cfg.repo=''; SYNC.cfg.token=''; SYNC.cfg.auto=false; SYNC.store(); updateModeUI(); $('#syncOverlay').classList.remove('open'); toast('Compte oublié'); } };
 
   // Raccourci Echap
   document.onkeydown = e=>{ if(e.key==='Escape'){ closeModal(); $('#syncOverlay').classList.remove('open'); } };
@@ -900,10 +1023,16 @@ function bind(){
   items = await DB.all();
   loadTomb();
   render();
-  // Synchro
+  // Mode de sauvegarde
   SYNC.load();
-  SYNC.setDot(SYNC.configured() ? 'ok' : 'off');
-  if(SYNC.cfg.auto && SYNC.configured()) SYNC.run(true);
+  await LOCAL.restore();
+  updateModeUI();
+  if(SYNC.cfg.mode==='local'){
+    if(LOCAL.handle) await LOCAL.loadMerge();          // récupère les changements du fichier (si autorisé)
+  } else {
+    SYNC.setDot(SYNC.configured() ? 'ok' : 'off');
+    if(SYNC.cfg.auto && SYNC.configured()) SYNC.run(true);
+  }
 })();
 </script>
 </body>
