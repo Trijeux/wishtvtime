@@ -714,6 +714,7 @@ async function compressAudio(file, startSec=0, lenSec=60, onProgress){
                : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus') ? 'audio/ogg;codecs=opus' : '';
     if(!mime) throw new Error('Opus non supporté');
     const ctx = new AC();
+    try{ await ctx.resume(); }catch(e){}
     const audioBuf = await ctx.decodeAudioData(await file.arrayBuffer());
     const start = Math.max(0, Math.min(startSec, audioBuf.duration));
     const len = Math.max(1, Math.min(lenSec, 60, audioBuf.duration - start));
@@ -889,13 +890,13 @@ async function openDetail(id){
   const au=$('#dAudio'), sBtn=$('#dSound');
   au.pause(); au.removeAttribute('src');
   if(i.audio || i.audioPath){
-    sBtn.style.display='inline-flex'; sBtn.textContent='🔊 Musique';
+    sBtn.style.display='inline-flex'; sBtn.textContent='🔊 Écouter';
     let src = i.audio;
     if(!src && i.audioPath && SYNC.configured()){               // pas encore en cache : on télécharge
       const a = await SYNC.fetchAsset(i.audioPath, i.audioMime||'audio/webm');
       if(a){ src=a.dataURL; i.audio=a.dataURL; i.audioSha=a.sha; await DB.put(i); }
     }
-    if(src){ au.src=src; try{ await au.play(); }catch(e){ sBtn.textContent='🔇 Couper'; } }
+    if(src){ au.src=src; try{ await au.play(); sBtn.textContent='🔇 Couper'; }catch(e){ sBtn.textContent='🔊 Écouter'; } }
   } else sBtn.style.display='none';
 }
 
@@ -1318,31 +1319,34 @@ const SYNC = {
   // Envoie TOUT (images neuves + data.json + suppressions) en UN SEUL commit (API Git).
   async push(allItems){
     const br = this.cfg.branch;
-    // 1) Blobs des fichiers neufs (images + audio + fond), dédoublonnés par chemin (= par contenu)
+    // 1) Blobs des fichiers neufs (images + audio + fond), dédoublonnés par chemin (= par contenu).
+    //    On NE marque PAS « propre » ici : seulement après que le commit a réussi (voir plus bas).
     const blobMap = new Map();   // path -> sha du blob
+    const toClean = [];          // {it, kind} à marquer non-dirty une fois le commit confirmé
     for(const it of allItems){
       if(it.image && it.imagePath && it.imageDirty){
         if(!blobMap.has(it.imagePath)){
           this.status('Préparation image : '+it.title);
           blobMap.set(it.imagePath, await this.createBlob(it.image.split(',')[1]));
         }
-        it.imageSha = blobMap.get(it.imagePath); it.imageDirty = false; await DB.put(it);
+        toClean.push({it, kind:'image'});
       }
       if(it.audio && it.audioPath && it.audioDirty){
         if(!blobMap.has(it.audioPath)){
           this.status('Préparation audio : '+it.title);
           blobMap.set(it.audioPath, await this.createBlob(it.audio.split(',')[1]));
         }
-        it.audioSha = blobMap.get(it.audioPath); it.audioDirty = false; await DB.put(it);
+        toClean.push({it, kind:'audio'});
       }
     }
     // Fond d'écran (réglage global) : blob si modifié
+    let bgWasDirty = false;
     if(THEME.cfg.bgDirty && THEME.bg && THEME.cfg.bgPath){
       if(!blobMap.has(THEME.cfg.bgPath)){
         this.status('Préparation du fond d\'écran…');
         blobMap.set(THEME.cfg.bgPath, await this.createBlob(THEME.bg.split(',')[1]));
       }
-      THEME.cfg.bgDirty = false; THEME.store();
+      bgWasDirty = true;
     }
     const clean = allItems.map(i=>this._stripForJson(i));
     const deleted = Object.entries(tombstones).map(([id,at])=>({id,at}));
@@ -1386,7 +1390,15 @@ const SYNC = {
       // f) on avance la branche
       r = await fetch(this._api('git/refs/heads/'+br), {method:'PATCH', headers:this._headers(),
         body:JSON.stringify({sha:newCommit})});
-      if(r.ok) return;                                  // ✅ succès
+      if(r.ok){                                          // ✅ succès -> on marque les fichiers « propres »
+        for(const {it, kind} of toClean){
+          if(kind==='image'){ it.imageSha = blobMap.get(it.imagePath); it.imageDirty = false; }
+          else { it.audioSha = blobMap.get(it.audioPath); it.audioDirty = false; }
+          await DB.put(it);
+        }
+        if(bgWasDirty){ THEME.cfg.bgDirty = false; THEME.store(); }
+        return;
+      }
       if((r.status===422 || r.status===409) && attempt<2){
         this.status('La branche a bougé, nouvelle tentative...');
         continue;                                       // la branche a bougé -> on relit et on recommence
@@ -1708,7 +1720,7 @@ function bind(){
     const id = detailId; closeDetail();
     await deleteItem(id); toast('🗑 Fiche supprimée');
   };
-  $('#dSound').onclick = ()=>{ const au=$('#dAudio'); if(au.paused){ au.play().catch(()=>{}); $('#dSound').textContent='🔊 Musique'; } else { au.pause(); $('#dSound').textContent='🔇 Couper'; } };
+  $('#dSound').onclick = ()=>{ const au=$('#dAudio'); if(au.paused){ au.play().catch(()=>{}); $('#dSound').textContent='🔇 Couper'; } else { au.pause(); $('#dSound').textContent='🔊 Écouter'; } };
   let dDownTarget = null;
   $('#detailOverlay').onmousedown = e=>{ dDownTarget = e.target; };
   $('#detailOverlay').onclick = e=>{ if(e.target===$('#detailOverlay') && dDownTarget===$('#detailOverlay')) closeDetail(); };
@@ -1726,7 +1738,7 @@ function bind(){
   $('#accentColorInput').oninput = e=>{ THEME.cfg.accent=e.target.value; THEME.cfg.accent2=e.target.value; THEME.store(); THEME.apply(); renderThemePanel(); };
   $('#cardSizeSel').onchange = e=>{ THEME.cfg.cardMin=e.target.value; THEME.store(); THEME.apply(); };
   $('#bgPick').onclick = ()=>$('#bgInput').click();
-  $('#bgInput').onchange = async e=>{ if(e.target.files[0]){ await THEME.setBg(await compress(e.target.files[0], 1920, .85)); renderThemePanel(); } e.target.value=''; };
+  $('#bgInput').onchange = async e=>{ if(e.target.files[0]){ await THEME.setBg(await compress(e.target.files[0], 1600, .82)); renderThemePanel(); } e.target.value=''; };
   $('#bgClear').onclick = async ()=>{ await THEME.clearBg(); renderThemePanel(); };
 
   // Repli / dépli des filtres (PC + mobile)
