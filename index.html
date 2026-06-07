@@ -11,18 +11,28 @@
     --accent:#7c5cff; --accent-2:#5b8def;
     --anime:#ff6b9d; --manga:#ffb454; --jeu:#4dd4ac; --film:#5b8def; --autre:#9aa0b4;
     --ok:#4dd4ac; --warn:#ffb454; --bad:#ff6b6b;
-    --radius:14px;
+    --radius:14px; --card-min:170px;
+    --header:rgba(15,17,23,.85);
+  }
+  /* Thème clair */
+  html[data-theme="light"]{
+    --bg:#eef1f6; --bg2:#ffffff; --card:#ffffff; --card-h:#f1f3f8;
+    --txt:#1b1f2a; --txt-dim:#646b7d; --line:#dde1ea;
+    --header:rgba(255,255,255,.85);
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{
     font-family:'Segoe UI',system-ui,sans-serif;
     background:var(--bg); color:var(--txt);
     min-height:100vh; padding-bottom:60px;
+    background-size:cover; background-position:center; background-attachment:fixed;
   }
+  /* Voile de lisibilité quand un fond d'écran est défini */
+  body.has-bg::before{ content:''; position:fixed; inset:0; background:var(--bg); opacity:.80; z-index:-1; }
   /* ---------- Header ---------- */
   header{
     position:sticky; top:0; z-index:30;
-    background:rgba(15,17,23,.85); backdrop-filter:blur(12px);
+    background:var(--header); backdrop-filter:blur(12px);
     border-bottom:1px solid var(--line);
     padding:14px 20px;
   }
@@ -65,7 +75,7 @@
   .count{color:var(--txt-dim); font-size:14px; margin-bottom:16px}
   .grid{
     display:grid; gap:18px;
-    grid-template-columns:repeat(auto-fill,minmax(170px,1fr));
+    grid-template-columns:repeat(auto-fill,minmax(var(--card-min),1fr));
   }
   .card{
     background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
@@ -79,6 +89,12 @@
   }
   .thumb img{width:100%; height:100%; object-fit:cover}
   .thumb .ph{font-size:42px; opacity:.25}
+  /* Cartes horizontales (jaquette à gauche, infos à droite) */
+  html[data-cards="horizontal"] .grid{ grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); }
+  html[data-cards="horizontal"] .card{ flex-direction:row; }
+  html[data-cards="horizontal"] .thumb{ flex:0 0 96px; width:96px; aspect-ratio:2/3; }
+  html[data-cards="horizontal"] .card-body{ flex:1; min-width:0; }
+  html[data-cards="horizontal"] .card-title{ -webkit-line-clamp:1; min-height:0; }
   .badge-type{
     position:absolute; top:8px; left:8px; padding:4px 9px; border-radius:7px;
     font-size:11px; font-weight:700; color:#0f1117; backdrop-filter:blur(4px);
@@ -179,6 +195,16 @@
   .d-link{display:inline-flex; margin-top:4px; text-decoration:none}
   .d-comment{background:var(--card); border:1px solid var(--line); border-radius:10px;
     padding:14px 16px; margin-top:16px; font-size:14px; line-height:1.6; white-space:pre-wrap}
+  /* ---------- Apparence ---------- */
+  .seg{display:inline-flex; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:hidden}
+  .seg button{border:none; background:none; color:var(--txt-dim); padding:9px 16px; cursor:pointer; font-size:14px; font-weight:600}
+  .seg button.on{background:var(--accent); color:#fff}
+  .swatches{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+  .swatch{width:32px; height:32px; border-radius:50%; cursor:pointer; border:2px solid transparent; transition:.15s}
+  .swatch:hover{transform:scale(1.1)}
+  .swatch.on{border-color:var(--txt); box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--txt)}
+  .swatch-custom{width:32px; height:32px; border-radius:50%; padding:0; border:2px dashed var(--line); cursor:pointer; background:none}
+  .thumb-bg{width:100%; max-height:140px; object-fit:cover; border-radius:10px; margin-top:10px; display:none}
   .modal-actions{display:flex; gap:10px; justify-content:space-between; margin-top:22px}
   .modal-actions .right{display:flex; gap:10px}
   .btn-danger{background:transparent; border:1px solid var(--bad); color:var(--bad)}
@@ -220,6 +246,7 @@
     <button class="btn btn-icon" id="importBtn" title="Importer une sauvegarde">⬆️ Import</button>
     <button class="btn btn-icon" id="syncBtn" title="Synchroniser maintenant"><span id="syncDot" class="sync-dot off"></span>🔄</button>
     <button class="btn btn-icon" id="localSaveBtn" title="Télécharger la sauvegarde" style="display:none">💾</button>
+    <button class="btn btn-icon" id="themeBtn" title="Apparence">🎨</button>
     <button class="btn btn-icon" id="settingsBtn" title="Paramètres">⚙️</button>
     <button class="btn btn-primary" id="addBtn">＋ Ajouter</button>
     <input type="file" id="importInput" accept="application/json">
@@ -345,6 +372,33 @@
       </div>
     </div>
     <div class="field">
+      <label>🎵 Musique / OST</label>
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
+        <button class="btn" id="audioPick" type="button">🎵 Choisir un fichier audio…</button>
+        <button class="btn btn-danger" id="audioClear" type="button" style="display:none">Retirer</button>
+        <span id="audioInfo" class="help" style="margin-top:0"></span>
+      </div>
+      <div id="audioTrim" style="display:none; margin-top:10px">
+        <audio id="audioPreview" controls style="width:100%"></audio>
+        <div class="row2" style="margin-top:8px">
+          <div class="field" style="margin:0">
+            <label>Début (s)</label>
+            <input type="number" id="audioStart" min="0" step="1" value="0">
+          </div>
+          <div class="field" style="margin:0">
+            <label>Durée (s · max 60)</label>
+            <input type="number" id="audioLen" min="1" max="60" step="1" value="60">
+          </div>
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:8px; align-items:center">
+          <button class="btn" id="audioHere" type="button" title="Utiliser la position d'écoute comme début">⏱️ Début = position lue</button>
+          <button class="btn btn-primary" id="audioCapture" type="button">✂️ Capturer cet extrait</button>
+          <span id="audioCapInfo" class="help" style="margin-top:0"></span>
+        </div>
+      </div>
+      <input type="file" id="audioInput" accept="audio/*" style="display:none">
+    </div>
+    <div class="field">
       <label>Commentaire / notes perso</label>
       <textarea id="fComment" placeholder="Ton avis, où tu en es, etc."></textarea>
     </div>
@@ -367,12 +421,73 @@
       <div id="dInfo"></div>
     </div>
     <div id="dComment"></div>
+    <audio id="dAudio" loop></audio>
     <div class="modal-actions">
-      <button class="btn btn-danger" id="dDelete">🗑 Supprimer</button>
+      <div style="display:flex; gap:10px">
+        <button class="btn btn-danger" id="dDelete">🗑 Supprimer</button>
+        <button class="btn" id="dSound" style="display:none">🔊 Musique</button>
+      </div>
       <div class="right">
         <button class="btn" id="dClose2">Fermer</button>
         <button class="btn btn-primary" id="dEdit">✏️ Modifier</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Apparence -->
+<div class="overlay" id="themeOverlay">
+  <div class="modal">
+    <h2><span>🎨 Apparence</span><button class="x" id="closeTheme">✕</button></h2>
+
+    <div class="field">
+      <label>Thème</label>
+      <div class="seg" id="themeSeg">
+        <button type="button" data-theme="dark">🌙 Sombre</button>
+        <button type="button" data-theme="light">☀️ Clair</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Couleur d'accent</label>
+      <div class="swatches" id="accentSwatches">
+        <button type="button" class="swatch-custom" id="accentCustom" title="Couleur personnalisée">🎨</button>
+        <input type="color" id="accentColorInput" style="display:none">
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Orientation des cartes</label>
+      <div class="seg" id="orientSeg">
+        <button type="button" data-orient="vertical">📱 Verticale (jaquette)</button>
+        <button type="button" data-orient="horizontal">🖥️ Horizontale</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Taille des cartes</label>
+      <select id="cardSizeSel">
+        <option value="140px">Petites (plus par ligne)</option>
+        <option value="170px">Moyennes (défaut)</option>
+        <option value="210px">Grandes</option>
+        <option value="250px">Très grandes</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Fond d'écran</label>
+      <div style="display:flex; gap:10px; flex-wrap:wrap">
+        <button class="btn" id="bgPick" type="button">🖼️ Choisir une image…</button>
+        <button class="btn btn-danger" id="bgClear" type="button" style="display:none">Retirer</button>
+      </div>
+      <img id="bgPreview" class="thumb-bg" alt="">
+      <div class="help">L'image est stockée localement sur cet appareil (pas synchronisée).</div>
+      <input type="file" id="bgInput" accept="image/*" style="display:none">
+    </div>
+
+    <div class="modal-actions">
+      <div></div>
+      <div class="right"><button class="btn btn-primary" id="closeTheme2">Fermer</button></div>
     </div>
   </div>
 </div>
@@ -525,6 +640,10 @@ let items = [];
 let editingId = null;
 let curImage = null;     // dataURL
 let imageChanged = false;// l'image a-t-elle été modifiée dans ce formulaire ?
+let curAudio = null;     // dataURL de l'extrait audio (cache local)
+let curAudioMime = null; // mime de l'extrait (audio/webm, audio/mpeg en repli…)
+let audioChanged = false;// l'audio a-t-il été modifié dans ce formulaire ?
+let pendingAudioFile = null; // fichier audio choisi, en attente de capture d'extrait
 let curRating = 0;
 let curTags = [];
 let curPlatforms = [];
@@ -540,23 +659,58 @@ const $ = s => document.querySelector(s);
 const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); }
 
-// Compression image -> dataURL (max 600px de large, JPEG q .82)
-function compress(file){
+// Compression image -> dataURL (JPEG). max = largeur max en px, q = qualité.
+// Jaquettes : 600px ; fond d'écran : plus grand (voir appel).
+function compress(file, max=600, q=.82){
   return new Promise((res)=>{
     const img = new Image();
     img.onload = ()=>{
-      const max = 600;
       let {width:w, height:h} = img;
       if(w>max){ h = h*max/w; w = max; }
       const cv = document.createElement('canvas');
       cv.width=w; cv.height=h;
       cv.getContext('2d').drawImage(img,0,0,w,h);
-      res(cv.toDataURL('image/jpeg', .82));
+      res(cv.toDataURL('image/jpeg', q));
     };
     const fr = new FileReader();
     fr.onload = e => img.src = e.target.result;
     fr.readAsDataURL(file);
   });
+}
+
+function blobToDataURL(blob){ return new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.readAsDataURL(blob); }); }
+
+// Ré-encode un SEGMENT audio en Opus (webm/ogg) : à partir de `startSec`, pendant `lenSec` (≤60) -> dataURL.
+// Très léger (~0,7 Mo/min). Repli : si le navigateur ne sait pas ré-encoder, on garde le fichier d'origine entier.
+// onProgress(sec) est appelé pendant l'encodage (qui se fait en temps réel).
+async function compressAudio(file, startSec=0, lenSec=60, onProgress){
+  try{
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC || typeof MediaRecorder==='undefined') throw new Error('API absente');
+    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
+               : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus') ? 'audio/ogg;codecs=opus' : '';
+    if(!mime) throw new Error('Opus non supporté');
+    const ctx = new AC();
+    const audioBuf = await ctx.decodeAudioData(await file.arrayBuffer());
+    const start = Math.max(0, Math.min(startSec, audioBuf.duration));
+    const len = Math.max(1, Math.min(lenSec, 60, audioBuf.duration - start));
+    const src = ctx.createBufferSource(); src.buffer = audioBuf;
+    const dest = ctx.createMediaStreamDestination(); src.connect(dest);
+    const rec = new MediaRecorder(dest.stream, {mimeType:mime, audioBitsPerSecond:96000});
+    const chunks=[]; rec.ondataavailable = e=>{ if(e.data.size) chunks.push(e.data); };
+    const stopped = new Promise(res=> rec.onstop = res);
+    rec.start(); src.start(0, start, len);    // start(when, offset, duration) -> segment précis
+    const t0 = Date.now();
+    let timer; if(onProgress) timer = setInterval(()=>onProgress(Math.min(len,(Date.now()-t0)/1000)), 400);
+    await new Promise(r=>setTimeout(r, len*1000 + 150));
+    try{ src.stop(); }catch(e){} rec.stop(); await stopped;
+    if(timer) clearInterval(timer);
+    ctx.close();
+    return await blobToDataURL(new Blob(chunks, {type:mime.split(';')[0]}));
+  }catch(e){
+    console.warn('[audio] ré-encodage impossible, fichier d\'origine gardé :', e);
+    return await blobToDataURL(file);
+  }
 }
 
 // Empreinte du contenu (pour nommer les images par leur contenu -> dédoublonnage)
@@ -698,7 +852,7 @@ function escapeHtml(s){ return (s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'
 let detailId = null;
 function fmtDate(d){ if(!d) return ''; const dt=new Date(d); return isNaN(dt) ? d : dt.toLocaleDateString('fr-FR'); }
 
-function openDetail(id){
+async function openDetail(id){
   const i = items.find(x=>x.id===id);
   if(!i) return;
   detailId = id;
@@ -742,8 +896,21 @@ function openDetail(id){
   $('#dInfo').innerHTML = h.join('');
   $('#dComment').innerHTML = i.comment ? `<div class="d-comment">${escapeHtml(i.comment)}</div>` : '';
   $('#detailOverlay').classList.add('open');
+
+  // Musique / OST : lecture auto à l'ouverture (le clic sur la carte sert de geste utilisateur)
+  const au=$('#dAudio'), sBtn=$('#dSound');
+  au.pause(); au.removeAttribute('src');
+  if(i.audio || i.audioPath){
+    sBtn.style.display='inline-flex'; sBtn.textContent='🔊 Musique';
+    let src = i.audio;
+    if(!src && i.audioPath && SYNC.configured()){               // pas encore en cache : on télécharge
+      const a = await SYNC.fetchAsset(i.audioPath, i.audioMime||'audio/webm');
+      if(a){ src=a.dataURL; i.audio=a.dataURL; i.audioSha=a.sha; await DB.put(i); }
+    }
+    if(src){ au.src=src; try{ await au.play(); }catch(e){ sBtn.textContent='🔇 Couper'; } }
+  } else sBtn.style.display='none';
 }
-function closeDetail(){ $('#detailOverlay').classList.remove('open'); }
+function closeDetail(){ const au=$('#dAudio'); if(au){ au.pause(); } $('#detailOverlay').classList.remove('open'); }
 
 // =========================================================
 //  MODAL
@@ -796,6 +963,21 @@ function setImage(data){
   if(data){ prev.src=data; prev.style.display='block'; ph.style.display='none'; clr.style.display='block'; }
   else { prev.style.display='none'; ph.style.display='block'; clr.style.display='none'; }
 }
+function setAudio(data, mime){
+  curAudio = data; curAudioMime = data ? (mime||'audio/webm') : null;
+  $('#audioClear').style.display = data ? 'inline-flex' : 'none';
+  $('#audioInfo').textContent = data ? '🎵 Extrait prêt' : '';
+}
+// Affiche/masque l'outil de découpe et y charge le fichier choisi
+function showAudioTrim(file){
+  pendingAudioFile = file || null;
+  const trim=$('#audioTrim'), prev=$('#audioPreview');
+  if(file){
+    prev.src = URL.createObjectURL(file);
+    $('#audioStart').value = 0; $('#audioLen').value = 60; $('#audioCapInfo').textContent='';
+    trim.style.display='block';
+  } else { trim.style.display='none'; prev.removeAttribute('src'); }
+}
 function renderTags(){
   const box=$('#tagsInput'); box.querySelectorAll('.tag-pill').forEach(e=>e.remove());
   const entry=$('#tagEntry');
@@ -828,6 +1010,9 @@ function openModal(id){
   setRating(item?.rating || 0);
   setImage(item?.image || null);
   imageChanged = false;
+  setAudio(item?.audio || null, item?.audioMime);
+  audioChanged = false; showAudioTrim(null);
+  $('#audioInfo').textContent = (item?.audio || item?.audioPath) ? '🎵 Extrait présent' : '';
   renderTags();
   $('#deleteBtn').style.display = item ? 'inline-flex' : 'none';
   $('#overlay').classList.add('open');
@@ -850,6 +1035,13 @@ async function save(){
   // Lien : on ajoute https:// si l'utilisateur a oublié le protocole
   let link = $('#fLink').value.trim();
   if(link && !/^https?:\/\//i.test(link)) link = 'https://'+link;
+  // Audio nommé par son contenu (comme les images) -> dédoublonnage, fichier séparé dans le dépôt
+  let audioPath = null;
+  if(curAudio){
+    audioPath = (audioChanged || !existing?.audioPath)
+      ? 'audio/'+(await sha256Hex(curAudio.split(',')[1]))
+      : existing.audioPath;
+  }
   const type = $('#fType').value;
   const isGame = type==='jeu';
   // Compteurs : le « courant » ne peut pas dépasser le total (sauf le % d'un jeu, qui peut dépasser 100)
@@ -876,6 +1068,11 @@ async function save(){
     imagePath,                                         // référence du fichier (par empreinte de contenu)
     imageSha: imageChanged ? undefined : existing?.imageSha,
     imageDirty: imageChanged ? !!curImage : !!existing?.imageDirty,  // à (ré)uploader ?
+    audio: curAudio,                                   // dataURL extrait (cache local, pas dans data.json)
+    audioPath,                                         // référence fichier audio (par contenu)
+    audioMime: curAudio ? (curAudioMime||'audio/webm') : null,
+    audioSha: audioChanged ? undefined : existing?.audioSha,
+    audioDirty: audioChanged ? !!curAudio : !!existing?.audioDirty,
     created: existing?.created || Date.now(),
     updated: Date.now(),
   };
@@ -940,6 +1137,10 @@ function importData(file){
           it.imagePath = 'images/'+(await sha256Hex(it.image.split(',')[1]))+'.jpg';
           it.imageDirty = true; delete it.imageSha;
         }
+        if(it.audio){                         // audio présent -> à (ré)uploader
+          it.audioPath = 'audio/'+(await sha256Hex(it.audio.split(',')[1]));
+          it.audioMime = it.audioMime||'audio/webm'; it.audioDirty = true; delete it.audioSha;
+        }
         await DB.put(it);
       }
       items = await DB.all();
@@ -978,24 +1179,30 @@ const SYNC = {
 
   // Champs internes (cache local) à NE PAS écrire dans data.json
   _stripForJson(it){
-    const {image, imageDirty, imageSha, ...clean} = it;  // on retire l'image base64 + flags locaux
+    // on retire les gros base64 (image/audio) + les flags locaux ; on garde imagePath/audioPath/audioMime
+    const {image, imageDirty, imageSha, audio, audioDirty, audioSha, ...clean} = it;
     return clean;
   },
-  // Récupère une image depuis le dépôt -> {dataURL, sha}
-  async fetchImage(path){
+  // Récupère un fichier (image/audio/fond) depuis le dépôt -> {dataURL, sha}
+  async fetchAsset(path, mime){
     const r = await fetch(this._contents(path)+'?ref='+this.cfg.branch, {headers:this._headers()});
     if(!r.ok) return null;
     const d = await r.json();
     if(!d.content) return null;
-    return {dataURL:'data:image/jpeg;base64,'+d.content.replace(/\n/g,''), sha:d.sha};
+    return {dataURL:`data:${mime};base64,`+d.content.replace(/\n/g,''), sha:d.sha};
   },
-  // Télécharge les images manquantes en local (nouvel appareil)
+  fetchImage(path){ return this.fetchAsset(path, 'image/jpeg'); },
+  // Télécharge les fichiers manquants en local (nouvel appareil) : images + audio
   async fetchMissing(){
     let changed = false;
     for(const it of items){
       if(it.imagePath && !it.image){
         const img = await this.fetchImage(it.imagePath);
         if(img){ it.image = img.dataURL; it.imageSha = img.sha; await DB.put(it); changed = true; }
+      }
+      if(it.audioPath && !it.audio){
+        const au = await this.fetchAsset(it.audioPath, it.audioMime||'audio/webm');
+        if(au){ it.audio = au.dataURL; it.audioSha = au.sha; await DB.put(it); changed = true; }
       }
     }
     if(changed) render();
@@ -1020,13 +1227,14 @@ const SYNC = {
   // Récupère {items, deleted, sha} du dépôt, ou vide si pas encore de fichier
   async pull(){
     const r = await fetch(this._url()+'?ref='+this.cfg.branch, {headers:this._headers(), cache:'no-store'});
-    if(r.status===404) return {items:[], deleted:[], sha:null};
+    if(r.status===404) return {items:[], deleted:[], bg:null, sha:null};
     if(!r.ok) throw new Error('pull '+r.status);
     const data = await r.json();
     const json = JSON.parse(this.b64dec(data.content));
     return {
       items: Array.isArray(json)?json:(json.items||[]),
       deleted: (json && json.deleted) ? json.deleted : [],
+      bg: (json && json.bg) ? json.bg : null,
       sha:data.sha
     };
   },
@@ -1038,8 +1246,8 @@ const SYNC = {
   // Envoie TOUT (images neuves + data.json + suppressions) en UN SEUL commit (API Git).
   async push(allItems){
     const br = this.cfg.branch;
-    // 1) Blobs des images neuves, dédoublonnés par chemin (= par contenu)
-    const blobMap = new Map();   // imagePath -> sha du blob
+    // 1) Blobs des fichiers neufs (images + audio + fond), dédoublonnés par chemin (= par contenu)
+    const blobMap = new Map();   // path -> sha du blob
     for(const it of allItems){
       if(it.image && it.imagePath && it.imageDirty){
         if(!blobMap.has(it.imagePath)){
@@ -1048,11 +1256,30 @@ const SYNC = {
         }
         it.imageSha = blobMap.get(it.imagePath); it.imageDirty = false; await DB.put(it);
       }
+      if(it.audio && it.audioPath && it.audioDirty){
+        if(!blobMap.has(it.audioPath)){
+          this.status('Préparation audio : '+it.title);
+          blobMap.set(it.audioPath, await this.createBlob(it.audio.split(',')[1]));
+        }
+        it.audioSha = blobMap.get(it.audioPath); it.audioDirty = false; await DB.put(it);
+      }
+    }
+    // Fond d'écran (réglage global) : blob si modifié
+    if(THEME.cfg.bgDirty && THEME.bg && THEME.cfg.bgPath){
+      if(!blobMap.has(THEME.cfg.bgPath)){
+        this.status('Préparation du fond d\'écran…');
+        blobMap.set(THEME.cfg.bgPath, await this.createBlob(THEME.bg.split(',')[1]));
+      }
+      THEME.cfg.bgDirty = false; THEME.store();
     }
     const clean = allItems.map(i=>this._stripForJson(i));
     const deleted = Object.entries(tombstones).map(([id,at])=>({id,at}));
-    const referenced = new Set(clean.filter(i=>i.imagePath).map(i=>i.imagePath));  // images encore utilisées
-    const jsonStr = JSON.stringify({app:'WishTvTime',version:1,items:clean,deleted}, null, 2);
+    // Fichiers encore utilisés (à conserver lors du nettoyage)
+    const referenced = new Set();
+    clean.forEach(i=>{ if(i.imagePath) referenced.add(i.imagePath); if(i.audioPath) referenced.add(i.audioPath); });
+    if(THEME.cfg.bgPath) referenced.add(THEME.cfg.bgPath);
+    const bg = {path: THEME.cfg.bgPath||null, updated: THEME.cfg.bgUpdated||0};
+    const jsonStr = JSON.stringify({app:'WishTvTime',version:1,items:clean,deleted,bg}, null, 2);
     const jsonBlob = await this.createBlob(this.b64enc(jsonStr));
 
     // 2) Commit + avancement de branche, avec réessai si la branche a bougé
@@ -1071,7 +1298,8 @@ const SYNC = {
       const tree = [{path:'data.json', mode:'100644', type:'blob', sha:jsonBlob}];
       for(const [path,sha] of blobMap){ if(!existing.has(path)) tree.push({path, mode:'100644', type:'blob', sha}); }
       for(const p of existing){
-        if(p.startsWith('images/') && !referenced.has(p)) tree.push({path:p, mode:'100644', type:'blob', sha:null});
+        if((p.startsWith('images/')||p.startsWith('audio/')||p.startsWith('bg/')) && !referenced.has(p))
+          tree.push({path:p, mode:'100644', type:'blob', sha:null});
       }
       // d) nouvel arbre
       r = await fetch(this._api('git/trees'), {method:'POST', headers:this._headers(),
@@ -1116,6 +1344,10 @@ const SYNC = {
         it.image = loc.image; it.imageSha = loc.imageSha;
       }
       if(loc && loc.imageDirty){ it.imageDirty = true; if(!it.image) it.image = loc.image; }
+      if(loc && loc.audio && !it.audio && loc.audioPath===it.audioPath){
+        it.audio = loc.audio; it.audioSha = loc.audioSha; if(!it.audioMime) it.audioMime = loc.audioMime;
+      }
+      if(loc && loc.audioDirty){ it.audioDirty = true; if(!it.audio) it.audio = loc.audio; }
     }
     return [...map.values()];
   },
@@ -1125,10 +1357,16 @@ const SYNC = {
     if(!this.configured()){ if(!silent) toast('⚙️ Configure d\'abord la synchro'); return; }
     this.busy = true; this.setDot('busy'); this.status('Synchronisation...');
     try{
-      const {items:remote, deleted:remoteDel, sha} = await this.pull();
+      const {items:remote, deleted:remoteDel, bg:remoteBg, sha} = await this.pull();
       // combine les suppressions locales + distantes (on garde la plus récente)
       for(const d of remoteDel){ if(d && d.id && (!tombstones[d.id] || d.at>tombstones[d.id])) tombstones[d.id]=d.at; }
       saveTomb();
+      // Fond d'écran : le plus récent gagne (entre cet appareil et le dépôt)
+      if(remoteBg && (remoteBg.updated||0) > (THEME.cfg.bgUpdated||0)){
+        THEME.cfg.bgPath = remoteBg.path||null; THEME.cfg.bgUpdated = remoteBg.updated||0; THEME.cfg.bgDirty = false; THEME.store();
+        if(THEME.cfg.bgPath){ const a = await this.fetchAsset(THEME.cfg.bgPath, 'image/jpeg'); if(a) await THEME.setBgData(a.dataURL); }
+        else await THEME.setBgData(null);
+      }
       const merged = this.merge(items, remote);
       // sauvegarde locale + purge des fiches supprimées du stockage local
       for(const id in tombstones){ await DB.del(id); }
@@ -1242,6 +1480,78 @@ async function afterChange(){
   else SYNC.autoPush();
 }
 
+// =========================================================
+//  APPARENCE (thème, couleur, taille des cartes, fond d'écran)
+//  Réglages locaux à l'appareil : thème/couleur/taille en localStorage,
+//  image de fond en IndexedDB (meta) car potentiellement lourde.
+// =========================================================
+const ACCENTS = [
+  {a:'#7c5cff', b:'#5b8def'},  // violet (défaut)
+  {a:'#ff5c8a', b:'#ff8a5c'},  // rose
+  {a:'#20c997', b:'#12b886'},  // vert
+  {a:'#ff9f43', b:'#ffb454'},  // orange
+  {a:'#4dabf7', b:'#3b82f6'},  // bleu
+  {a:'#ff6b6b', b:'#ee5253'},  // rouge
+  {a:'#22d3ee', b:'#0ea5e9'},  // cyan
+];
+const THEME = {
+  // bgPath/bgUpdated/bgDirty servent à synchroniser le fond d'écran via GitHub (cf. SYNC.push/run)
+  cfg:{theme:'dark', accent:'', accent2:'', cardMin:'170px', cardOrient:'vertical', bgPath:null, bgUpdated:0, bgDirty:false},
+  bg:null,
+  load(){ try{ Object.assign(this.cfg, JSON.parse(localStorage.getItem('mc_theme')||'{}')); }catch(e){} },
+  store(){ localStorage.setItem('mc_theme', JSON.stringify(this.cfg)); },
+  apply(){
+    const root = document.documentElement;
+    root.setAttribute('data-theme', this.cfg.theme||'dark');
+    root.setAttribute('data-cards', this.cfg.cardOrient||'vertical');
+    if(this.cfg.accent){ root.style.setProperty('--accent', this.cfg.accent);
+      root.style.setProperty('--accent-2', this.cfg.accent2||this.cfg.accent); }
+    else { root.style.removeProperty('--accent'); root.style.removeProperty('--accent-2'); }
+    root.style.setProperty('--card-min', this.cfg.cardMin||'170px');
+    this.applyBg();
+  },
+  applyBg(){
+    if(this.bg){ document.body.style.backgroundImage=`url(${this.bg})`; document.body.classList.add('has-bg'); }
+    else { document.body.style.backgroundImage=''; document.body.classList.remove('has-bg'); }
+  },
+  async loadBg(){ try{ this.bg = await DB.meta('bgImage') || null; }catch(e){ this.bg=null; } this.applyBg(); },
+  // Applique un fond reçu du dépôt SANS toucher aux horodatages (réconciliation)
+  async setBgData(dataURL){ this.bg = dataURL||null; await DB.meta('bgImage', this.bg); this.applyBg(); },
+  // Choix utilisateur d'un fond -> marque « à synchroniser » puis pousse
+  async setBg(dataURL){
+    this.bg = dataURL; await DB.meta('bgImage', dataURL);
+    this.cfg.bgPath = 'bg/'+(await sha256Hex(dataURL.split(',')[1]))+'.jpg';
+    this.cfg.bgUpdated = Date.now(); this.cfg.bgDirty = true; this.store();
+    this.applyBg(); await afterChange();
+  },
+  async clearBg(){
+    this.bg = null; await DB.meta('bgImage', null);
+    this.cfg.bgPath = null; this.cfg.bgUpdated = Date.now(); this.cfg.bgDirty = false; this.store();
+    this.applyBg(); await afterChange();
+  },
+};
+
+// Remplit le panneau Apparence selon l'état courant
+function renderThemePanel(){
+  $('#themeSeg').querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.theme===(THEME.cfg.theme||'dark')));
+  $('#orientSeg').querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.orient===(THEME.cfg.cardOrient||'vertical')));
+  const sw = $('#accentSwatches');
+  sw.querySelectorAll('.swatch').forEach(e=>e.remove());
+  ACCENTS.forEach(c=>{
+    const el=document.createElement('button'); el.type='button'; el.className='swatch';
+    el.style.background=`linear-gradient(135deg,${c.a},${c.b})`;
+    const active = (THEME.cfg.accent||ACCENTS[0].a).toLowerCase()===c.a.toLowerCase();
+    if(active) el.classList.add('on');
+    el.onclick=()=>{ THEME.cfg.accent=c.a; THEME.cfg.accent2=c.b; THEME.store(); THEME.apply(); renderThemePanel(); };
+    sw.insertBefore(el, $('#accentCustom'));
+  });
+  $('#cardSizeSel').value = THEME.cfg.cardMin||'170px';
+  const prev=$('#bgPreview');
+  if(THEME.bg){ prev.src=THEME.bg; prev.style.display='block'; $('#bgClear').style.display='inline-flex'; }
+  else { prev.style.display='none'; $('#bgClear').style.display='none'; }
+}
+function openTheme(){ THEME.load(); renderThemePanel(); $('#themeOverlay').classList.add('open'); }
+
 // Affiche/masque les sections + le bouton 🔄 selon le mode
 function updateModeUI(){
   const local = SYNC.cfg.mode==='local';
@@ -1326,9 +1636,26 @@ function bind(){
     const id = detailId; closeDetail();
     await deleteItem(id); toast('🗑 Fiche supprimée');
   };
+  $('#dSound').onclick = ()=>{ const au=$('#dAudio'); if(au.paused){ au.play().catch(()=>{}); $('#dSound').textContent='🔊 Musique'; } else { au.pause(); $('#dSound').textContent='🔇 Couper'; } };
   let dDownTarget = null;
   $('#detailOverlay').onmousedown = e=>{ dDownTarget = e.target; };
   $('#detailOverlay').onclick = e=>{ if(e.target===$('#detailOverlay') && dDownTarget===$('#detailOverlay')) closeDetail(); };
+
+  // Apparence
+  $('#themeBtn').onclick = openTheme;
+  $('#closeTheme').onclick = ()=>$('#themeOverlay').classList.remove('open');
+  $('#closeTheme2').onclick = ()=>$('#themeOverlay').classList.remove('open');
+  let tDownTarget = null;
+  $('#themeOverlay').onmousedown = e=>{ tDownTarget = e.target; };
+  $('#themeOverlay').onclick = e=>{ if(e.target===$('#themeOverlay') && tDownTarget===$('#themeOverlay')) $('#themeOverlay').classList.remove('open'); };
+  $('#themeSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{ THEME.cfg.theme=b.dataset.theme; THEME.store(); THEME.apply(); renderThemePanel(); });
+  $('#orientSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{ THEME.cfg.cardOrient=b.dataset.orient; THEME.store(); THEME.apply(); render(); renderThemePanel(); });
+  $('#accentCustom').onclick = ()=>$('#accentColorInput').click();
+  $('#accentColorInput').oninput = e=>{ THEME.cfg.accent=e.target.value; THEME.cfg.accent2=e.target.value; THEME.store(); THEME.apply(); renderThemePanel(); };
+  $('#cardSizeSel').onchange = e=>{ THEME.cfg.cardMin=e.target.value; THEME.store(); THEME.apply(); };
+  $('#bgPick').onclick = ()=>$('#bgInput').click();
+  $('#bgInput').onchange = async e=>{ if(e.target.files[0]){ await THEME.setBg(await compress(e.target.files[0], 1920, .85)); renderThemePanel(); } e.target.value=''; };
+  $('#bgClear').onclick = async ()=>{ await THEME.clearBg(); renderThemePanel(); };
 
   // Recherche / filtres
   $('#searchInput').oninput = e=>{ filters.q=e.target.value; render(); };
@@ -1342,6 +1669,25 @@ function bind(){
   $('#imgDrop').onclick = e=>{ if(e.target.id!=='imgClear') $('#fileInput').click(); };
   $('#fileInput').onchange = async e=>{ if(e.target.files[0]){ setImage(await compress(e.target.files[0])); imageChanged=true; } e.target.value=''; };
   $('#imgClear').onclick = e=>{ e.stopPropagation(); setImage(null); imageChanged=true; $('#fileInput').value=''; };
+
+  // Audio / OST
+  $('#audioPick').onclick = ()=>$('#audioInput').click();
+  $('#audioInput').onchange = e=>{ const f=e.target.files[0]; e.target.value=''; if(f) showAudioTrim(f); };
+  $('#audioHere').onclick = ()=>{ const p=$('#audioPreview'); if(p && !isNaN(p.currentTime)) $('#audioStart').value = Math.floor(p.currentTime); };
+  $('#audioCapture').onclick = async ()=>{
+    if(!pendingAudioFile){ toast('Choisis d\'abord un fichier audio'); return; }
+    const start = Math.max(0, +$('#audioStart').value||0);
+    const len   = Math.min(60, Math.max(1, +$('#audioLen').value||60));
+    const info=$('#audioCapInfo'); info.textContent='⏳ Capture… 0s';
+    $('#audioCapture').disabled = true;
+    const data = await compressAudio(pendingAudioFile, start, len, sec=>{ info.textContent='⏳ Capture… '+Math.round(sec)+'s'; });
+    $('#audioCapture').disabled = false;
+    // mime réel = préfixe du dataURL (data:<mime>;base64,)
+    const mime = data.substring(5, data.indexOf(';'));
+    setAudio(data, mime); audioChanged = true;
+    info.textContent = '✅ Extrait capturé ('+len+'s)';
+  };
+  $('#audioClear').onclick = ()=>{ setAudio(null); audioChanged=true; showAudioTrim(null); };
 
   // Note
   $('#ratePick').querySelectorAll('span').forEach(s=>s.onclick=()=>setRating(+s.dataset.v===curRating?0:+s.dataset.v));
@@ -1378,16 +1724,18 @@ function bind(){
   $('#cfgForget').onclick = ()=>{ if(confirm('Oublier le compte sur cet appareil ? (tes fiches restent)')){ SYNC.cfg.owner=''; SYNC.cfg.repo=''; SYNC.cfg.token=''; SYNC.cfg.auto=false; SYNC.store(); updateModeUI(); $('#syncOverlay').classList.remove('open'); toast('Compte oublié'); } };
 
   // Raccourci Echap
-  document.onkeydown = e=>{ if(e.key==='Escape'){ closeModal(); closeDetail(); $('#syncOverlay').classList.remove('open'); } };
+  document.onkeydown = e=>{ if(e.key==='Escape'){ closeModal(); closeDetail(); $('#syncOverlay').classList.remove('open'); $('#themeOverlay').classList.remove('open'); } };
 }
 
 // ---- Init ----
 (async function(){
   // Demande un stockage PERMANENT (les données du navigateur, dans AppData, ne seront pas effacées auto)
   try{ if(navigator.storage && navigator.storage.persist){ await navigator.storage.persist(); } }catch(e){}
+  THEME.load(); THEME.apply();          // applique thème/couleur/taille tôt (évite le flash)
   buildSelectors();
   bind();
   await DB.open();
+  await THEME.loadBg();                  // image de fond (stockée en IndexedDB)
   items = await DB.all();
   loadTomb();
   render();
