@@ -34,7 +34,7 @@
     font-family:'Segoe UI',system-ui,sans-serif;
     background:var(--bg); color:var(--txt);
     min-height:100vh; padding-bottom:60px;
-    background-size:cover; background-position:center; background-attachment:fixed;
+    background-size:100% auto; background-position:top center; background-attachment:scroll; background-repeat:repeat-y;
   }
   /* Voile de lisibilité quand un fond d'écran est défini */
   body.has-bg::before{ content:''; position:fixed; inset:0; background:var(--bg); opacity:.80; z-index:-1; }
@@ -105,6 +105,15 @@
   }
   .thumb img{width:100%; height:100%; object-fit:cover}
   .thumb .ph{font-size:42px; opacity:.25}
+  /* Dossiers / collections (façon Android) */
+  .folder-bar{display:flex; align-items:center; gap:12px; margin-bottom:16px}
+  .folder-title{font-size:19px; font-weight:800}
+  .card.folder .thumb{background:var(--card-h)}
+  .folder-thumb{display:grid; grid-template-columns:1fr 1fr; gap:5px; padding:9px; aspect-ratio:auto !important; align-content:center}
+  .fmini{width:100%; height:auto; min-width:0; min-height:0; aspect-ratio:2/3; object-fit:cover; border-radius:6px; background:var(--bg2); display:block}
+  html[data-cards="horizontal"] .fmini{aspect-ratio:16/9}
+  .fmini.ph{display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:800; color:var(--txt-dim)}
+  .fmini.empty{opacity:.45}
   /* Cartes horizontales : image en format paysage (16/9), infos en dessous */
   html[data-cards="horizontal"] .grid{ grid-template-columns:repeat(auto-fill,minmax(calc(var(--card-min) + 80px),1fr)); }
   html[data-cards="horizontal"] .thumb{ aspect-ratio:16/9; }
@@ -315,7 +324,9 @@
     </select>
     <select class="mini" id="sortBy">
       <option value="recent">Récents d'abord</option>
+      <option value="old">Anciens d'abord</option>
       <option value="title">Titre A→Z</option>
+      <option value="title_desc">Titre Z→A</option>
       <option value="rating">Mieux notés</option>
       <option value="year_desc">Année ↓ (récent)</option>
       <option value="year_asc">Année ↑ (ancien)</option>
@@ -326,6 +337,7 @@
 </header>
 
 <main>
+  <div class="folder-bar" id="folderBar" style="display:none"></div>
   <div class="count" id="count"></div>
   <div class="grid" id="grid"></div>
   <div class="empty" id="empty" style="display:none">
@@ -374,8 +386,16 @@
           <div class="tags-input" id="tagsInput">
             <input type="text" id="tagEntry" placeholder="Ajouter un tag puis Entrée...">
           </div>
+          <div class="sugg" id="tagsSugg"></div>
         </div>
       </div>
+    </div>
+    <div class="field">
+      <label>📚 Listes / collections</label>
+      <div class="tags-input" id="listsBox">
+        <input type="text" id="listEntry" placeholder="Liste + Entrée, ou clique ci-dessous…">
+      </div>
+      <div class="sugg" id="listsSugg"></div>
     </div>
     <div class="field">
       <label id="progLabel">Progression</label>
@@ -707,7 +727,8 @@ let pendingAudioFile = null; // fichier audio choisi, en attente de capture d'ex
 let curRating = 0;
 let curTags = [];
 let curPlatforms = [];
-const filters = {q:'', type:'', status:'', tag:'', platform:'', year:'', fav:false, sort:'recent'};
+let curLists = [];
+const filters = {q:'', type:'', status:'', tag:'', list:'', platform:'', year:'', fav:false, sort:'recent'};
 
 // Suppressions : id -> timestamp(ms). Sert à propager les suppressions entre appareils.
 let tombstones = {};
@@ -833,57 +854,51 @@ function applyFilters(){
   if(filters.type)     list = list.filter(i=>i.type===filters.type);
   if(filters.status)   list = list.filter(i=>i.status===filters.status);
   if(filters.tag)      list = list.filter(i=>(i.tags||[]).includes(filters.tag));
+  if(filters.list)     list = list.filter(i=>(i.lists||[]).includes(filters.list));
   if(filters.platform) list = list.filter(i=>platsOf(i).includes(filters.platform));
   if(filters.year)     list = list.filter(i=>String(i.year||'')===filters.year);
   if(filters.fav)      list = list.filter(i=>i.fav);
   const s = filters.sort;
+  const ts = x => new Date(x).getTime() || 0;   // gère created en nombre OU en texte
   if(s==='title')       list.sort((a,b)=>a.title.localeCompare(b.title));
+  else if(s==='title_desc') list.sort((a,b)=>b.title.localeCompare(a.title));
   else if(s==='rating') list.sort((a,b)=>(b.rating||0)-(a.rating||0));
   else if(s==='year_desc') list.sort((a,b)=>(b.year||-Infinity)-(a.year||-Infinity));
   else if(s==='year_asc')  list.sort((a,b)=>(a.year||Infinity)-(b.year||Infinity));
   else if(s==='prog_desc') list.sort((a,b)=>progRatio(b)-progRatio(a));
   else if(s==='prog_asc')  list.sort((a,b)=>progRatio(a)-progRatio(b));
-  else list.sort((a,b)=>b.created-a.created);
+  else if(s==='old')    list.sort((a,b)=>ts(a.created)-ts(b.created));
+  else list.sort((a,b)=>ts(b.created)-ts(a.created));   // récents d'abord (plus récent en haut)
   return list;
 }
 
-function render(){
-  refreshTagFilter();
-  const list = applyFilters();
-  const grid = $('#grid'), empty = $('#empty');
-  $('#count').textContent = `${list.length} élément${list.length>1?'s':''}` +
-    (items.length!==list.length?` (sur ${items.length})`:'');
-  if(items.length===0){ grid.innerHTML=''; empty.style.display='block'; return; }
-  empty.style.display='none';
-  grid.innerHTML = list.map(i=>{
-    const t=typeById(i.type), s=statusById(i.status);
-    const stars = i.rating? '★'.repeat(i.rating)+'☆'.repeat(5-i.rating) : '';
-    // Progression : pour un jeu = % seul ; sinon barre actuel/total (ou simple compteur)
-    const isGame = i.type==='jeu';
-    const pc = i.progCur||0, pt = i.progTotal||0, u = unitOf(i.type);
-    let progHtml = '';
-    if(isGame){
-      if(pc>0){ const w = Math.min(100, pc);   // barre plafonnée à 100, texte = vrai %
-        progHtml = `<div class="prog-wrap"><div class="prog-text"><span>Progression</span><span>${pc}%</span></div><div class="prog-bar"><i style="width:${w}%"></i></div></div>`; }
-    } else if(pt>0){
-      const pct = Math.min(100, Math.round(pc/pt*100));
-      progHtml = `<div class="prog-wrap"><div class="prog-text"><span>${pc}/${pt}${u?' '+u:''}</span><span>${pct}%</span></div><div class="prog-bar"><i style="width:${pct}%"></i></div></div>`;
-    } else if(pc>0){
-      progHtml = `<div class="prog-wrap"><div class="prog-text"><span>${pc}${u?' '+u:''}</span></div></div>`;
-    }
-    // Succès (jeux uniquement)
-    let achHtml = '';
-    if(isGame && (i.achTotal>0 || i.achCur>0)){
-      const ac = i.achCur||0, at = i.achTotal||0;
-      const apct = at>0 ? Math.min(100, Math.round(ac/at*100)) : 0;
-      achHtml = `<div class="prog-wrap"><div class="prog-text"><span>🏆 ${ac}${at?'/'+at:''} succès</span>${at?`<span>${apct}%</span>`:''}</div>${at?`<div class="prog-bar"><i style="width:${apct}%"></i></div>`:''}</div>`;
-    }
-    // Plateforme / année
-    const subs = [];
-    if(i.platform) subs.push('🎮 '+escapeHtml(i.platform));
-    if(i.year) subs.push('📅 '+i.year);
-    const subHtml = subs.length?`<div class="card-sub">${subs.join(' · ')}</div>`:'';
-    return `<div class="card" data-id="${i.id}">
+// Génère le HTML d'une carte de fiche
+function cardHtml(i){
+  const t=typeById(i.type), s=statusById(i.status);
+  const stars = i.rating? '★'.repeat(i.rating)+'☆'.repeat(5-i.rating) : '';
+  const isGame = i.type==='jeu';
+  const pc = i.progCur||0, pt = i.progTotal||0, u = unitOf(i.type);
+  let progHtml = '';
+  if(isGame){
+    if(pc>0){ const w = Math.min(100, pc);
+      progHtml = `<div class="prog-wrap"><div class="prog-text"><span>Progression</span><span>${pc}%</span></div><div class="prog-bar"><i style="width:${w}%"></i></div></div>`; }
+  } else if(pt>0){
+    const pct = Math.min(100, Math.round(pc/pt*100));
+    progHtml = `<div class="prog-wrap"><div class="prog-text"><span>${pc}/${pt}${u?' '+u:''}</span><span>${pct}%</span></div><div class="prog-bar"><i style="width:${pct}%"></i></div></div>`;
+  } else if(pc>0){
+    progHtml = `<div class="prog-wrap"><div class="prog-text"><span>${pc}${u?' '+u:''}</span></div></div>`;
+  }
+  let achHtml = '';
+  if(isGame && (i.achTotal>0 || i.achCur>0)){
+    const ac = i.achCur||0, at = i.achTotal||0;
+    const apct = at>0 ? Math.min(100, Math.round(ac/at*100)) : 0;
+    achHtml = `<div class="prog-wrap"><div class="prog-text"><span>🏆 ${ac}${at?'/'+at:''} succès</span>${at?`<span>${apct}%</span>`:''}</div>${at?`<div class="prog-bar"><i style="width:${apct}%"></i></div>`:''}</div>`;
+  }
+  const subs = [];
+  if(i.platform) subs.push('🎮 '+escapeHtml(i.platform));
+  if(i.year) subs.push('📅 '+i.year);
+  const subHtml = subs.length?`<div class="card-sub">${subs.join(' · ')}</div>`:'';
+  return `<div class="card" data-id="${i.id}">
       <div class="thumb">
         ${i.image?`<img src="${i.image}">`:(i.imagePath?`<div class="ph" title="Image en cours de synchro">⏳</div>`:`<div class="ph">${t.label[0]}</div>`)}
         <div class="badge-type" style="background:${t.color}">${t.label}</div>
@@ -903,8 +918,66 @@ function render(){
         ${(i.tags&&i.tags.length)?`<div class="card-tags">${i.tags.slice(0,3).map(x=>`<span class="tag">${escapeHtml(x)}</span>`).join('')}</div>`:''}
       </div>
     </div>`;
-  }).join('');
-  grid.querySelectorAll('.card').forEach(c=>c.onclick=()=>openDetail(c.dataset.id));
+}
+
+// Tuile « dossier » (collection) façon Android : aperçu 2×2 des jaquettes + nom + nombre
+function folderTile(name){
+  const inside = items.filter(i=>(i.lists||[]).includes(name)).sort((a,b)=>a.title.localeCompare(b.title));
+  const max = (THEME.cfg.cardOrient==='horizontal') ? 2 : 4;   // horizontal = 2 aperçus, vertical = 4
+  const preview = inside.slice(0,max);
+  let mini = preview.map(i=> i.image
+    ? `<img class="fmini" src="${i.image}" alt="">`
+    : `<div class="fmini ph">${typeById(i.type).label[0]}</div>`
+  ).join('');
+  for(let k=preview.length; k<max; k++) mini += `<span class="fmini empty"></span>`;
+  return `<div class="card folder" data-folder="${escapeHtml(name)}">
+      <div class="thumb folder-thumb">${mini}</div>
+      <div class="card-body">
+        <div class="card-title">📁 ${escapeHtml(name)}</div>
+        <div class="card-meta"><span>${inside.length} élément${inside.length>1?'s':''}</span></div>
+      </div>
+    </div>`;
+}
+
+let openFolder = null;   // nom de la collection ouverte (null = vue d'accueil)
+
+function render(){
+  refreshTagFilter();
+  const grid=$('#grid'), empty=$('#empty'), bar=$('#folderBar');
+  if(items.length===0){ grid.innerHTML=''; empty.style.display='block'; bar.style.display='none'; $('#count').textContent=''; return; }
+  empty.style.display='none';
+  const anyFilter = filters.q||filters.type||filters.status||filters.tag||filters.list||filters.platform||filters.year||filters.fav;
+
+  // --- Vue DANS un dossier ---
+  if(openFolder){
+    bar.style.display='flex';
+    bar.innerHTML = `<button class="btn" id="folderBack">← Dossiers</button><span class="folder-title">📁 ${escapeHtml(openFolder)}</span>`;
+    $('#folderBack').onclick = ()=>{ openFolder=null; render(); };
+    const list = applyFilters().filter(i=>(i.lists||[]).includes(openFolder));
+    $('#count').textContent = `${list.length} élément${list.length>1?'s':''}`;
+    grid.innerHTML = list.map(cardHtml).join('');
+    bindGrid(grid);
+    return;
+  }
+
+  bar.style.display='none';
+  const list = applyFilters();
+  const lists = allLists();
+  // --- Accueil : dossiers + fiches hors dossier (sauf si un filtre est actif -> affichage à plat) ---
+  if(lists.length && !anyFilter){
+    const loose = list.filter(i=>!(i.lists&&i.lists.length));
+    $('#count').textContent = `${lists.length} dossier${lists.length>1?'s':''} · ${loose.length} hors dossier`;
+    grid.innerHTML = lists.map(folderTile).join('') + loose.map(cardHtml).join('');
+  } else {
+    $('#count').textContent = `${list.length} élément${list.length>1?'s':''}` + (items.length!==list.length?` (sur ${items.length})`:'');
+    grid.innerHTML = list.map(cardHtml).join('');
+  }
+  bindGrid(grid);
+}
+
+function bindGrid(grid){
+  grid.querySelectorAll('.card.folder').forEach(c=>c.onclick=()=>{ openFolder=c.dataset.folder; render(); window.scrollTo({top:0}); });
+  grid.querySelectorAll('.card:not(.folder)').forEach(c=>c.onclick=()=>openDetail(c.dataset.id));
   grid.querySelectorAll('.badge-fav').forEach(b=>b.onclick=e=>{ e.stopPropagation(); toggleFav(b.dataset.id); });
 }
 
@@ -987,6 +1060,7 @@ function renderDetailInfo(i){
   if(i.dateDone) meta.push(`<div>✅ Terminé le <b>${fmtDate(i.dateDone)}</b></div>`);
   if(meta.length) h.push(`<div class="d-meta" style="margin-top:14px">${meta.join('')}</div>`);
   if(i.tags&&i.tags.length) h.push(`<div class="d-tags">${i.tags.map(x=>`<span class="tag">${escapeHtml(x)}</span>`).join('')}</div>`);
+  if(i.lists&&i.lists.length) h.push(`<div class="d-tags">${i.lists.map(x=>`<span class="tag" style="background:var(--accent);color:#fff">📚 ${escapeHtml(x)}</span>`).join('')}</div>`);
   if(i.link) h.push(`<a class="btn d-link" href="${escapeHtml(i.link)}" target="_blank" rel="noopener">🔗 Ouvrir le lien</a>`);
 
   $('#dInfo').innerHTML = h.join('');
@@ -1071,6 +1145,29 @@ function addPlatform(name){
   $('#platformEntry').value = '';
   renderPlatforms();
 }
+
+// Toutes les listes/collections existantes (toutes fiches confondues)
+function allLists(){ const s=new Set(); items.forEach(i=>(i.lists||[]).forEach(l=>s.add(l))); return [...s].sort(); }
+// Affiche les pastilles de listes choisies + suggestions cliquables (listes déjà créées non sélectionnées)
+function renderLists(){
+  const box=$('#listsBox'), entry=$('#listEntry');
+  box.querySelectorAll('.tag-pill').forEach(e=>e.remove());
+  curLists.forEach(l=>{
+    const el=document.createElement('span'); el.className='tag-pill';
+    el.innerHTML=`${escapeHtml(l)} <b>✕</b>`;
+    el.querySelector('b').onclick=()=>{ curLists=curLists.filter(x=>x!==l); renderLists(); };
+    box.insertBefore(el, entry);
+  });
+  const chosen=new Set(curLists.map(s=>s.toLowerCase()));
+  $('#listsSugg').innerHTML = allLists().filter(l=>!chosen.has(l.toLowerCase()))
+    .map(l=>`<button type="button" data-l="${escapeHtml(l)}">+ ${escapeHtml(l)}</button>`).join('');
+  $('#listsSugg').querySelectorAll('button').forEach(b=>b.onclick=()=>addList(b.dataset.l));
+}
+function addList(name){
+  name=(name||'').trim();
+  if(name && !curLists.some(x=>x.toLowerCase()===name.toLowerCase())) curLists.push(name);
+  $('#listEntry').value=''; renderLists();
+}
 function setImage(data){
   curImage = data;
   const prev=$('#imgPreview'), ph=$('#imgPlaceholder'), clr=$('#imgClear');
@@ -1102,6 +1199,7 @@ function showAudioTrim(file){
     trim.style.display='block';
   } else { trim.style.display='none'; prev.removeAttribute('src'); }
 }
+function allTags(){ const s=new Set(); items.forEach(i=>(i.tags||[]).forEach(t=>s.add(t))); return [...s].sort(); }
 function renderTags(){
   const box=$('#tagsInput'); box.querySelectorAll('.tag-pill').forEach(e=>e.remove());
   const entry=$('#tagEntry');
@@ -1110,6 +1208,14 @@ function renderTags(){
     el.innerHTML=`${escapeHtml(t)} <b>✕</b>`;
     el.querySelector('b').onclick=()=>{ curTags=curTags.filter(x=>x!==t); renderTags(); };
     box.insertBefore(el, entry);
+  });
+  // Suggestions : tags déjà utilisés ailleurs et non encore choisis
+  const chosen=new Set(curTags.map(s=>s.toLowerCase()));
+  $('#tagsSugg').innerHTML = allTags().filter(t=>!chosen.has(t.toLowerCase()))
+    .map(t=>`<button type="button" data-t="${escapeHtml(t)}">+ ${escapeHtml(t)}</button>`).join('');
+  $('#tagsSugg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    if(!curTags.some(x=>x.toLowerCase()===b.dataset.t.toLowerCase())) curTags.push(b.dataset.t);
+    renderTags();
   });
 }
 function openModal(id){
@@ -1131,6 +1237,8 @@ function openModal(id){
   $('#fLink').value      = item?.link || '';
   updateFormType();
   curTags = item?.tags ? [...item.tags] : [];
+  curLists = item?.lists ? [...item.lists] : [];
+  renderLists();
   setRating(item?.rating || 0);
   setImage(item?.image || null);
   imageChanged = false;
@@ -1182,6 +1290,7 @@ async function save(){
     status: $('#fStatus').value,
     rating: curRating,
     tags: curTags,
+    lists: curLists,
     comment: $('#fComment').value.trim(),
     progCur, progTotal, achCur, achTotal,
     year:      +$('#fYear').value      || null,
@@ -1932,6 +2041,12 @@ function bind(){
     } else if(e.key==='Backspace' && !e.target.value && curTags.length){
       curTags.pop(); renderTags();
     }
+  };
+
+  // Listes / collections
+  $('#listEntry').onkeydown = e=>{
+    if(e.key==='Enter' || e.key===','){ e.preventDefault(); addList(e.target.value.replace(/,$/,'')); }
+    else if(e.key==='Backspace' && !e.target.value && curLists.length){ curLists.pop(); renderLists(); }
   };
 
   // Export / Import
