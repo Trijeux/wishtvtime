@@ -950,10 +950,11 @@ function updateModeUI(){
   $('#cfgForget').style.display  = (!local && SYNC.configured()) ? 'inline-flex' : 'none';
   if(local){
     $('#cfgFileName').textContent = LOCAL.name() ? ('📄 '+LOCAL.name()) : 'Aucun fichier choisi';
-    $('#cfgPickFile').style.display = LOCAL.supported() ? 'inline-flex' : 'none';
+    $('#cfgPickFile').style.display = 'inline-flex';                 // toujours dispo : on peut choisir
+    $('#cfgPickFile').textContent = LOCAL.supported() ? '📁 Choisir le fichier…' : '💾 Choisir où enregistrer…';
     $('#localSupportNote').innerHTML = LOCAL.supported()
       ? '✅ Ce navigateur enregistre <b>automatiquement</b> dans le fichier choisi (l\'emplacement est mémorisé).'
-      : '⚠️ Ce navigateur (ex : <b>Firefox</b>) ne mémorise pas l\'emplacement du fichier. Utilise le bouton <b>💾</b> pour enregistrer une copie, ou le <b>mode GitHub</b> pour une synchro auto.';
+      : 'ℹ️ Ce navigateur (ex : <b>Firefox</b>) ne mémorise pas le fichier, mais tu peux <b>choisir où l\'enregistrer</b> à chaque fois. 💡 Active « <b>Toujours demander où enregistrer les fichiers</b> » dans les réglages du navigateur pour choisir le dossier. Sinon, le <b>mode GitHub</b> sauvegarde tout seul.';
   } else {
     SYNC.setDot(SYNC.configured() ? 'ok' : 'off');
   }
