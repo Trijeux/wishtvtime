@@ -3,7 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ma Collection</title>
+<title>WishTvTime</title>
+<!-- PWA : icône du raccourci sur téléphone (gratuit via GitHub Pages) -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f1117">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="WishTvTime">
+<meta name="mobile-web-app-capable" content="yes">
 <style>
   :root{
     --bg:#0f1117; --bg2:#171a23; --card:#1c2030; --card-h:#232838;
@@ -478,7 +487,7 @@
         <button class="btn btn-danger" id="bgClear" type="button" style="display:none">Retirer</button>
       </div>
       <img id="bgPreview" class="thumb-bg" alt="">
-      <div class="help">L'image est stockée localement sur cet appareil (pas synchronisée).</div>
+      <div class="help">🔄 Le fond est synchronisé sur tes appareils (via GitHub, si la synchro est configurée).</div>
       <input type="file" id="bgInput" accept="image/*" style="display:none">
     </div>
 
@@ -1025,7 +1034,7 @@ function openModal(id){
   $('#overlay').classList.add('open');
   $('#fTitle').focus();
 }
-function closeModal(){ $('#overlay').classList.remove('open'); }
+function closeModal(){ const p=$('#audioPreview'); if(p){ p.pause(); } $('#overlay').classList.remove('open'); }
 
 async function save(){
   const title = $('#fTitle').value.trim();
