@@ -1043,6 +1043,8 @@ function bind(){
 
 // ---- Init ----
 (async function(){
+  // Demande un stockage PERMANENT (les données du navigateur, dans AppData, ne seront pas effacées auto)
+  try{ if(navigator.storage && navigator.storage.persist){ await navigator.storage.persist(); } }catch(e){}
   buildSelectors();
   bind();
   await DB.open();
