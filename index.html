@@ -1681,6 +1681,8 @@ function bind(){
   $('#audioPick').onclick = ()=>$('#audioInput').click();
   $('#audioInput').onchange = e=>{ const f=e.target.files[0]; e.target.value=''; if(f) showAudioTrim(f); };
   $('#audioHere').onclick = ()=>{ const p=$('#audioPreview'); if(p && !isNaN(p.currentTime)){ $('#audioStart').value = Math.floor(p.currentTime); $('#audioStart').dispatchEvent(new Event('input')); } };
+  // Durée saisie au clavier : on borne à son max (≤ 60 et ≤ ce qui reste du morceau)
+  $('#audioLen').oninput = ()=>{ const len=$('#audioLen'); const m=Math.min(60, +len.max||60); if((+len.value||0)>m) len.value=m; };
   // Quand le début change : la durée max = ce qui reste du morceau (plafonné à 60)
   $('#audioStart').oninput = ()=>{
     const p=$('#audioPreview'), len=$('#audioLen');
