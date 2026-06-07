@@ -132,6 +132,22 @@
   .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent)}
   .field textarea{resize:vertical; min-height:70px}
   .row2{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+  .prog-fields{display:flex; align-items:center; gap:10px}
+  .prog-fields input{width:90px; text-align:center}
+  .prog-fields .slash{color:var(--txt-dim); font-size:18px}
+  .prog-unit{color:var(--txt-dim); font-size:13px}
+  /* progression + infos sur la carte */
+  .card-sub{font-size:11px; color:var(--txt-dim); margin-top:7px; display:flex; gap:8px; flex-wrap:wrap}
+  .prog-wrap{margin-top:9px}
+  .prog-text{display:flex; justify-content:space-between; font-size:10px; color:var(--txt-dim); margin-bottom:4px}
+  .prog-bar{height:5px; background:var(--bg2); border-radius:3px; overflow:hidden}
+  .prog-bar i{display:block; height:100%; border-radius:3px; background:linear-gradient(90deg,var(--accent),var(--accent-2))}
+  .badge-link{
+    position:absolute; bottom:8px; right:8px; width:28px; height:28px; border-radius:8px;
+    background:rgba(0,0,0,.55); color:#fff; display:flex; align-items:center; justify-content:center;
+    text-decoration:none; font-size:14px; backdrop-filter:blur(4px); z-index:2;
+  }
+  .badge-link:hover{background:var(--accent)}
   .rate-pick{display:flex; gap:4px; font-size:26px; cursor:pointer}
   .rate-pick span{color:var(--line); transition:.1s}
   .rate-pick span.on{color:var(--warn)}
@@ -255,6 +271,42 @@
       </div>
     </div>
     <div class="field">
+      <label id="progLabel">Progression</label>
+      <div class="prog-fields">
+        <input type="number" id="fProgCur" min="0" placeholder="0">
+        <span class="slash">/</span>
+        <input type="number" id="fProgTotal" min="0" placeholder="?">
+        <span class="prog-unit" id="progUnit"></span>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label>Année de sortie</label>
+        <input type="number" id="fYear" min="1900" max="2100" placeholder="ex : 2021">
+      </div>
+      <div class="field">
+        <label>Date terminé / vu</label>
+        <input type="date" id="fDateDone">
+      </div>
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label>Plateforme</label>
+        <input type="text" id="fPlatform" list="platformList" placeholder="ex : Netflix, Steam…">
+        <datalist id="platformList">
+          <option value="Netflix"><option value="Crunchyroll"><option value="ADN"><option value="Disney+">
+          <option value="Prime Video"><option value="Wakanim"><option value="Max"><option value="Apple TV+">
+          <option value="Steam"><option value="Epic Games"><option value="GOG"><option value="Game Pass">
+          <option value="Nintendo Switch"><option value="PS5"><option value="PS4"><option value="Xbox">
+          <option value="PC"><option value="Mobile"><option value="Cinéma"><option value="Blu-ray / DVD">
+        </datalist>
+      </div>
+      <div class="field">
+        <label>Lien</label>
+        <input type="url" id="fLink" placeholder="https://…">
+      </div>
+    </div>
+    <div class="field">
       <label>Commentaire / notes perso</label>
       <textarea id="fComment" placeholder="Ton avis, où tu en es, etc."></textarea>
     </div>
@@ -367,6 +419,9 @@ const STATUSES = [
 ];
 const typeById = id => TYPES.find(t=>t.id===id) || TYPES[4];
 const statusById = id => STATUSES.find(s=>s.id===id) || STATUSES[0];
+// Unité de progression selon le type (libellé court affiché à côté des compteurs)
+const UNIT = {anime:'épisodes', manga:'tomes', jeu:'%', film:'épisodes', autre:'éléments'};
+const unitOf = type => UNIT[type] || '';
 
 // ---- IndexedDB (mini wrapper) ----
 const DB = {
@@ -495,11 +550,26 @@ function render(){
   grid.innerHTML = list.map(i=>{
     const t=typeById(i.type), s=statusById(i.status);
     const stars = i.rating? '★'.repeat(i.rating)+'☆'.repeat(5-i.rating) : '';
+    // Progression (barre si un total est défini, sinon simple compteur)
+    const pc = i.progCur||0, pt = i.progTotal||0, u = unitOf(i.type);
+    let progHtml = '';
+    if(pt>0){
+      const pct = Math.min(100, Math.round(pc/pt*100));
+      progHtml = `<div class="prog-wrap"><div class="prog-text"><span>${pc}/${pt}${u?' '+u:''}</span><span>${pct}%</span></div><div class="prog-bar"><i style="width:${pct}%"></i></div></div>`;
+    } else if(pc>0){
+      progHtml = `<div class="prog-wrap"><div class="prog-text"><span>${pc}${u?' '+u:''}</span></div></div>`;
+    }
+    // Plateforme / année
+    const subs = [];
+    if(i.platform) subs.push('🎮 '+escapeHtml(i.platform));
+    if(i.year) subs.push('📅 '+i.year);
+    const subHtml = subs.length?`<div class="card-sub">${subs.join(' · ')}</div>`:'';
     return `<div class="card" data-id="${i.id}">
       <div class="thumb">
         ${i.image?`<img src="${i.image}">`:(i.imagePath?`<div class="ph" title="Image en cours de synchro">⏳</div>`:`<div class="ph">${t.label[0]}</div>`)}
         <div class="badge-type" style="background:${t.color}">${t.label}</div>
         <div class="badge-status" style="background:${s.color}" title="${s.label}"></div>
+        ${i.link?`<a class="badge-link" href="${escapeHtml(i.link)}" target="_blank" rel="noopener" title="Ouvrir le lien" onclick="event.stopPropagation()">🔗</a>`:''}
       </div>
       <div class="card-body">
         <div class="card-title">${escapeHtml(i.title)}</div>
@@ -507,6 +577,8 @@ function render(){
           <span>${s.label}</span>
           ${stars?`<span class="stars" title="${i.rating}/5">${stars}</span>`:''}
         </div>
+        ${subHtml}
+        ${progHtml}
         ${(i.tags&&i.tags.length)?`<div class="card-tags">${i.tags.slice(0,3).map(x=>`<span class="tag">${escapeHtml(x)}</span>`).join('')}</div>`:''}
       </div>
     </div>`;
@@ -520,6 +592,8 @@ function escapeHtml(s){ return (s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'
 //  MODAL
 // =========================================================
 function setRating(v){ curRating=v; $('#ratePick').querySelectorAll('span').forEach(s=>s.classList.toggle('on', +s.dataset.v<=v)); }
+// Met à jour l'unité affichée à côté des compteurs de progression, selon le type choisi
+function updateProgUnit(){ $('#progUnit').textContent = unitOf($('#fType').value); }
 function setImage(data){
   curImage = data;
   const prev=$('#imgPreview'), ph=$('#imgPlaceholder'), clr=$('#imgClear');
@@ -544,6 +618,13 @@ function openModal(id){
   $('#fType').value  = item?.type || 'anime';
   $('#fStatus').value= item?.status || 'a_faire';
   $('#fComment').value = item?.comment || '';
+  $('#fProgCur').value   = item?.progCur || '';
+  $('#fProgTotal').value = item?.progTotal || '';
+  $('#fYear').value      = item?.year || '';
+  $('#fDateDone').value  = item?.dateDone || '';
+  $('#fPlatform').value  = item?.platform || '';
+  $('#fLink').value      = item?.link || '';
+  updateProgUnit();
   curTags = item?.tags ? [...item.tags] : [];
   setRating(item?.rating || 0);
   setImage(item?.image || null);
@@ -567,6 +648,9 @@ async function save(){
       ? 'images/'+(await sha256Hex(curImage.split(',')[1]))+'.jpg'
       : existing.imagePath;
   }
+  // Lien : on ajoute https:// si l'utilisateur a oublié le protocole
+  let link = $('#fLink').value.trim();
+  if(link && !/^https?:\/\//i.test(link)) link = 'https://'+link;
   const item = {
     id,
     title,
@@ -575,6 +659,12 @@ async function save(){
     rating: curRating,
     tags: curTags,
     comment: $('#fComment').value.trim(),
+    progCur:   +$('#fProgCur').value   || 0,
+    progTotal: +$('#fProgTotal').value || 0,
+    year:      +$('#fYear').value      || null,
+    dateDone:  $('#fDateDone').value   || '',
+    platform:  $('#fPlatform').value.trim(),
+    link,
     image: curImage,                                   // dataURL (cache local, pas dans data.json)
     imagePath,                                         // référence du fichier (par empreinte de contenu)
     imageSha: imageChanged ? undefined : existing?.imageSha,
@@ -993,6 +1083,7 @@ function bind(){
   $('#cancelBtn').onclick = closeModal;
   $('#saveBtn').onclick = save;
   $('#deleteBtn').onclick = removeItem;
+  $('#fType').onchange = updateProgUnit;
   $('#overlay').onclick = e=>{ if(e.target===$('#overlay')) closeModal(); };
 
   // Recherche / filtres
