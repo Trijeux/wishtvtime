@@ -1971,6 +1971,10 @@ function bind(){
 
 // ---- Init ----
 (async function(){
+  // Mode appli / hors-ligne : enregistre le service worker (HTTPS uniquement ; ignoré en file://)
+  if('serviceWorker' in navigator && location.protocol.startsWith('http')){
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  }
   // Demande un stockage PERMANENT (les données du navigateur, dans AppData, ne seront pas effacées auto)
   try{ if(navigator.storage && navigator.storage.persist){ await navigator.storage.persist(); } }catch(e){}
   THEME.load(); THEME.apply();          // applique thème/couleur/taille tôt (évite le flash)
