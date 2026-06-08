@@ -384,7 +384,7 @@
         <div class="field">
           <label>Tags</label>
           <div class="tags-input" id="tagsInput">
-            <input type="text" id="tagEntry" placeholder="Ajouter un tag puis Entrée...">
+            <input type="text" id="tagEntry" placeholder="Tag puis Entrée ou Espace…">
           </div>
           <div class="sugg" id="tagsSugg"></div>
         </div>
@@ -393,7 +393,7 @@
     <div class="field">
       <label>📚 Listes / collections</label>
       <div class="tags-input" id="listsBox">
-        <input type="text" id="listEntry" placeholder="Liste + Entrée, ou clique ci-dessous…">
+        <input type="text" id="listEntry" placeholder="Liste + Entrée/Espace, ou clique ci-dessous…">
       </div>
       <div class="sugg" id="listsSugg"></div>
     </div>
@@ -429,7 +429,7 @@
       <div class="field">
         <label>Plateforme</label>
         <div class="tags-input" id="platformBox">
-          <input type="text" id="platformEntry" placeholder="Plateforme + Entrée, ou clique ci-dessous…">
+          <input type="text" id="platformEntry" placeholder="Plateforme + Entrée/Espace, ou clique ci-dessous…">
         </div>
         <div class="sugg" id="platformSugg"></div>
       </div>
@@ -1924,9 +1924,10 @@ function bind(){
   $('#fAchCur').oninput    = ()=>clampPair('#fAchCur','#fAchTotal');
   $('#fAchTotal').oninput  = ()=>clampPair('#fAchCur','#fAchTotal');
 
-  // Plateforme (étiquettes) : Entrée ou virgule = ajoute ; Retour arrière (champ vide) = retire la dernière
+  // Plateforme (étiquettes) : Entrée, virgule ou espace = ajoute ; Retour arrière (champ vide) = retire la dernière
+  // (l'espace valide aussi → indispensable sur mobile où « Entrée » n'émet pas d'événement fiable)
   $('#platformEntry').onkeydown = e=>{
-    if(e.key==='Enter' || e.key===','){ e.preventDefault(); addPlatform(e.target.value.replace(/,$/,'')); }
+    if(e.key==='Enter' || e.key===',' || e.key===' '){ e.preventDefault(); addPlatform(e.target.value.replace(/,$/,'')); }
     else if(e.key==='Backspace' && !e.target.value && curPlatforms.length){ curPlatforms.pop(); renderPlatforms(); }
   };
   // Fermer en cliquant sur le fond — mais seulement si le clic a COMMENCÉ sur le fond
@@ -2034,7 +2035,7 @@ function bind(){
 
   // Tags
   $('#tagEntry').onkeydown = e=>{
-    if(e.key==='Enter' || e.key===','){ e.preventDefault();
+    if(e.key==='Enter' || e.key===',' || e.key===' '){ e.preventDefault();
       const v=e.target.value.trim().replace(/,$/,'');
       if(v && !curTags.includes(v)){ curTags.push(v); renderTags(); }
       e.target.value='';
@@ -2045,7 +2046,7 @@ function bind(){
 
   // Listes / collections
   $('#listEntry').onkeydown = e=>{
-    if(e.key==='Enter' || e.key===','){ e.preventDefault(); addList(e.target.value.replace(/,$/,'')); }
+    if(e.key==='Enter' || e.key===',' || e.key===' '){ e.preventDefault(); addList(e.target.value.replace(/,$/,'')); }
     else if(e.key==='Backspace' && !e.target.value && curLists.length){ curLists.pop(); renderLists(); }
   };
 
