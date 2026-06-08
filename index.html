@@ -158,8 +158,8 @@
   @media(max-width:560px){
     .form-grid{grid-template-columns:1fr}
     .form-grid > *{min-width:0}                 /* évite le « grid blowout » (débordement à droite) */
-    .row2{grid-template-columns:1fr}            /* empile les paires (Type/Statut, Année/Date…) */
-    .row2 > *{min-width:0}
+    .modal .row2{grid-template-columns:1fr}     /* empile les paires (Type/Statut, Année/Date…) — .modal pour battre la règle de base */
+    .modal .row2 > *{min-width:0}
     .title-row{flex-wrap:wrap}                  /* le bouton Métadonnées passe sous le titre */
     .title-row > input{flex-basis:100%}
     .title-row .meta-btn{flex:1 0 100%; justify-content:center}
