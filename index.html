@@ -1342,16 +1342,27 @@ async function searchMeta(type, query){
     const r = await fetch('https://api.jikan.moe/v4/anime?q='+encodeURIComponent(query)+'&limit=8&sfw');
     if(!r.ok) throw new Error('HTTP '+r.status);
     const d = await r.json();
-    return (d.data||[]).map(a=>({
-      title:    a.title_english || a.title,
-      year:     a.year || (a.aired?.from ? new Date(a.aired.from).getFullYear() : null),
-      total:    a.episodes || 0,
-      image:    a.images?.jpg?.large_image_url || a.images?.jpg?.image_url || '',
-      synopsis: a.synopsis || '',
-      genres:   (a.genres||[]).map(g=>g.name),
-      rating:   a.score ? Math.min(5, Math.round(a.score/2)) : 0,   // /10 → /5 arrondi
-      link:     a.url || '',
-    }));
+    return (d.data||[]).map(a=>{
+      const m = {
+        title:    a.title_english || a.title,
+        year:     a.year || (a.aired?.from ? new Date(a.aired.from).getFullYear() : null),
+        total:    a.episodes || 0,
+        image:    a.images?.jpg?.large_image_url || a.images?.jpg?.image_url || '',
+        synopsis: a.synopsis || '',
+        genres:   (a.genres||[]).map(g=>g.name),
+        platforms:[],
+        rating:   a.score ? Math.min(5, Math.round(a.score/2)) : 0,   // /10 → /5 arrondi
+        link:     a.url || '',
+      };
+      // Au clic : plateformes de streaming (Crunchyroll, ADN, Netflix…) via l'endpoint dédié de Jikan.
+      m.fetchDetails = async ()=>{
+        try{
+          const sr = await fetch('https://api.jikan.moe/v4/anime/'+a.mal_id+'/streaming');
+          if(sr.ok){ const sd = await sr.json(); m.platforms = (sd.data||[]).map(s=>s.name).filter(Boolean); }
+        }catch(e){}
+      };
+      return m;
+    });
   }
   if(src==='jikan-manga'){
     const r = await fetch('https://api.jikan.moe/v4/manga?q='+encodeURIComponent(query)+'&limit=8&sfw');
@@ -1386,13 +1397,30 @@ async function searchMeta(type, query){
         image:    x.poster_path ? 'https://image.tmdb.org/t/p/w500'+x.poster_path : '',
         synopsis: x.overview || '',
         genres:   (x.genre_ids||[]).map(id=>gmap[id]).filter(Boolean),
+        platforms:[],
         rating:   x.vote_count>0 ? Math.min(5, Math.round(x.vote_average/2)) : 0,   // /10 → /5 arrondi
         link:     'https://www.themoviedb.org/'+(isTv?'tv':'movie')+'/'+x.id,
         kind:     isTv ? 'Série' : 'Film',
       };
+      const mediaPath = isTv ? 'tv' : 'movie';
       if(isTv) m.fetchTotal = async ()=>{
         const dr = await fetch('https://api.themoviedb.org/3/tv/'+x.id+'?api_key='+key+'&language=fr-FR');
         if(!dr.ok) return 0; const dd = await dr.json(); return dd.number_of_episodes||0;
+      };
+      // Au clic : plateformes de visionnage (abonnement/gratuit) via TMDB watch providers.
+      // On mélange Suisse (CH) + France (FR) puis on dédoublonne.
+      m.fetchDetails = async ()=>{
+        try{
+          const pr = await fetch('https://api.themoviedb.org/3/'+mediaPath+'/'+x.id+'/watch/providers?api_key='+key);
+          if(pr.ok){
+            const res = (await pr.json()).results || {};
+            const names = ['CH','FR'].flatMap(cc=>{
+              const r = res[cc] || {};
+              return [...(r.flatrate||[]), ...(r.free||[]), ...(r.ads||[])].map(p=>p.provider_name);
+            });
+            m.platforms = [...new Set(names)];
+          }
+        }catch(e){}
       };
       return m;
     });
@@ -1472,49 +1500,53 @@ async function searchMeta(type, query){
     const d = await r.json();
     const pages = d.query?.pages ? Object.values(d.query.pages) : [];
     pages.sort((a,b)=>(a.index||0)-(b.index||0));   // garde l'ordre de pertinence de la recherche
-    return pages.map(p=>({
-      title:    p.title,
-      year:     null, total:0,
-      image:    p.thumbnail?.source || '',
-      synopsis: (p.extract||'').slice(0,800) + ((p.extract||'').length>800?'…':''),
-      genres:   [], platforms:[], achTotal:0,
-      link:     'https://fr.wikipedia.org/wiki/'+encodeURIComponent(p.title.replace(/ /g,'_')),
-    }));
+    return pages.map(p=>{
+      const ext = p.extract||'';
+      const ym = ext.match(/\b(18|19|20)\d{2}\b/);   // 1ʳᵉ année plausible du résumé (sortie/parution)
+      return {
+        title:    p.title,
+        year:     ym ? +ym[0] : null,
+        total:    0,
+        image:    p.thumbnail?.source || '',
+        synopsis: ext.slice(0,800) + (ext.length>800?'…':''),
+        genres:   [], platforms:[], achTotal:0,
+        link:     'https://fr.wikipedia.org/wiki/'+encodeURIComponent(p.title.replace(/ /g,'_')),
+      };
+    });
   }
   return [];
 }
-// Applique une proposition au formulaire. Ne pré-écrase pas le travail manuel
-// (titre = on prend la version officielle choisie ; le reste seulement si le champ est vide).
+// Applique une proposition au formulaire en ÉCRASANT les champs (image, infos, genres,
+// plateformes, note…). But : choisir une métadonnée = recharger entièrement la fiche.
 async function applyMeta(m){
   // Données différées (résolues seulement au clic, pour économiser les appels) :
   //  - TMDB séries : nombre d'épisodes ; RAWG jeux : succès + description.
   if(!m.total && typeof m.fetchTotal==='function'){ try{ m.total = (await m.fetchTotal())||0; }catch(e){} }
   if(typeof m.fetchDetails==='function'){ try{ await m.fetchDetails(); }catch(e){} }
+  // FULL RESET : on recharge entièrement la fiche depuis la source. Tout champ géré par les
+  // métadonnées que la source NE fournit PAS est remis à vide (on ne garde rien de l'ancienne fiche).
   if(m.title) $('#fTitle').value = m.title;
-  if(m.year  && !$('#fYear').value)               $('#fYear').value = m.year;
-  if(m.total > 0 && !(+$('#fProgTotal').value))    $('#fProgTotal').value = m.total;
-  if(m.achTotal > 0 && !(+$('#fAchTotal').value))  $('#fAchTotal').value = m.achTotal;   // jeux : succès
-  if(m.rating > 0 && !curRating)                   setRating(m.rating);                  // note /5 (arrondie depuis la source)
-  if(m.link  && !$('#fLink').value.trim())         $('#fLink').value = m.link;
-  if(m.synopsis && !$('#fComment').value.trim())   $('#fComment').value = m.synopsis;
-  (m.genres||[]).forEach(g=>{ if(g && !curTags.some(x=>x.toLowerCase()===g.toLowerCase())) curTags.push(g); });
-  renderTags();
-  // Plateformes (jeux) : ajoutées automatiquement, sans doublon.
-  (m.platforms||[]).forEach(p=>{ if(p && !curPlatforms.some(x=>x.toLowerCase()===p.toLowerCase())) curPlatforms.push(p); });
-  renderPlatforms();
+  $('#fYear').value      = m.year   || '';
+  $('#fProgTotal').value = m.total    > 0 ? m.total    : '';
+  $('#fAchTotal').value  = m.achTotal > 0 ? m.achTotal : '';   // jeux : succès
+  setRating(m.rating > 0 ? m.rating : 0);                      // note /5 (arrondie depuis la source)
+  $('#fLink').value      = m.link    || '';
+  $('#fComment').value   = m.synopsis || '';
+  curTags      = (m.genres||[]).filter(Boolean);    renderTags();
+  curPlatforms = (m.platforms||[]).filter(Boolean); renderPlatforms();
   $('#metaResults').classList.remove('open');
-  // Jaquette : seulement si aucune image manuelle. On tente les sources dans l'ordre
-  // (ex. Steam : jaquette verticale, puis repli paysage si elle n'existe pas).
-  if(!curImage){
-    const sources = [m.image, m.imageAlt].filter(Boolean);
-    if(sources.length){
-      toast('⏳ Téléchargement de la jaquette…');
-      let done = false;
-      for(const u of sources){
-        try{ setImage(await urlToDataURL(u)); imageChanged = true; done = true; break; }catch(e){}
-      }
-      if(!done){ console.warn('[meta] jaquette non récupérée'); toast('⚠️ Jaquette non récupérée (infos OK)'); return; }
+  // Jaquette : on REMPLACE par celle de la source. Tentatives dans l'ordre (Steam : verticale puis paysage).
+  // Si la source ne fournit AUCUNE image, on vide la jaquette (full reset).
+  const sources = [m.image, m.imageAlt].filter(Boolean);
+  if(sources.length){
+    toast('⏳ Téléchargement de la jaquette…');
+    let done = false;
+    for(const u of sources){
+      try{ setImage(await urlToDataURL(u)); imageChanged = true; done = true; break; }catch(e){}
     }
+    if(!done){ console.warn('[meta] jaquette non récupérée'); toast('⚠️ Jaquette non récupérée (infos OK)'); return; }
+  } else {
+    setImage(null); imageChanged = true;   // aucune image fournie → jaquette vidée
   }
   toast('✨ Infos appliquées');
 }
