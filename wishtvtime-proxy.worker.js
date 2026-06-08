@@ -71,10 +71,13 @@ async function searchGames(url, env){
     if(!hasIgdb) return json({ source: 'igdb', error: 'IGDB non configuré (TWITCH_ID/TWITCH_SECRET manquants)', items: [] });
     return json({ source: 'igdb', items: await igdbSearch(q, env) });
   }
-  // auto : IGDB si configuré, repli Steam
+  // auto : IGDB si configuré ET s'il trouve des résultats ; sinon repli Steam
   if(hasIgdb){
-    try{ return json({ source: 'igdb', items: await igdbSearch(q, env) }); }
-    catch(e){ /* IGDB en échec → on bascule sur Steam */ }
+    try{
+      const items = await igdbSearch(q, env);
+      if(items.length) return json({ source: 'igdb', items });
+      // IGDB n'a rien trouvé → on tente Steam
+    }catch(e){ /* IGDB en échec → on bascule sur Steam */ }
   }
   return json({ source: 'steam', items: await steamSearch(q) });
 }
@@ -90,40 +93,62 @@ async function igdbToken(env){
   _tok = { v: d.access_token, exp: Date.now() + (d.expires_in - 60) * 1000 };
   return _tok.v;
 }
+// Catégories IGDB à écarter : 1=DLC, 3=bundle, 13=pack, 14=update (pas de « vrais » jeux).
+const IGDB_SKIP_CAT = new Set([1, 3, 13, 14]);
+const IGDB_FIELDS = 'fields name,first_release_date,summary,genres.name,platforms.name,cover.image_id,category,url,total_rating,total_rating_count;';
 async function igdbSearch(q, env){
   const tok = await igdbToken(env);
-  const body = `search "${q.replace(/"/g, '')}"; fields name,first_release_date,summary,genres.name,cover.image_id,url; limit 10;`;
-  const r = await fetch('https://api.igdb.com/v4/games', {
-    method: 'POST',
-    headers: { 'Client-ID': env.TWITCH_ID, 'Authorization': 'Bearer ' + tok, 'Accept': 'application/json' },
-    body
-  });
-  if(!r.ok) throw new Error('IGDB ' + r.status);
-  const arr = await r.json();
-  return arr.map(g => ({
-    title:    g.name,
-    year:     g.first_release_date ? new Date(g.first_release_date * 1000).getFullYear() : null,
-    image:    g.cover ? `https://images.igdb.com/igdb/image/upload/t_cover_big_2x/${g.cover.image_id}.jpg` : '',
-    synopsis: g.summary || '',
-    genres:   (g.genres || []).map(x => x.name),
-    achTotal: 0,
-    link:     g.url || '',
-  }));
+  const headers = { 'Client-ID': env.TWITCH_ID, 'Authorization': 'Bearer ' + tok, 'Accept': 'application/json' };
+  const run = async (body) => {
+    const r = await fetch('https://api.igdb.com/v4/games', { method: 'POST', headers, body });
+    if(!r.ok) throw new Error('IGDB ' + r.status);
+    return await r.json();
+  };
+  // Découpe la saisie en mots (sans ponctuation) → trouve les jeux dont le nom CONTIENT chaque mot.
+  // Gère les recherches partielles (« nier au » → « NieR: Automata »), triées par popularité.
+  const words = q.split(/\s+/).map(w => w.replace(/[^a-z0-9]/gi, '')).filter(w => w.length >= 2);
+  let arr = [];
+  if(words.length){
+    const where = 'where ' + words.map(w => `name ~ *"${w}"*`).join(' & ') + ';';
+    arr = await run(`${IGDB_FIELDS} ${where} sort total_rating_count desc; limit 30;`);
+  }
+  // Repli : si rien (ou saisie trop courte), on tente le moteur « search » d'IGDB.
+  if(!arr.length){
+    arr = await run(`search "${q.replace(/"/g, '')}"; ${IGDB_FIELDS} limit 20;`);
+  }
+  return arr
+    .filter(g => !IGDB_SKIP_CAT.has(g.category))
+    .slice(0, 10)
+    .map(g => ({
+      title:     g.name,
+      year:      g.first_release_date ? new Date(g.first_release_date * 1000).getFullYear() : null,
+      image:     g.cover ? `https://images.igdb.com/igdb/image/upload/t_cover_big_2x/${g.cover.image_id}.jpg` : '',
+      synopsis:  g.summary || '',
+      genres:    (g.genres || []).map(x => x.name),
+      platforms: (g.platforms || []).map(x => x.name),
+      rating:    g.total_rating ? Math.min(5, Math.round(g.total_rating / 20)) : 0,   // /100 → /5 arrondi
+      achTotal:  0,
+      link:      g.url || '',
+    }));
 }
 
 // ---- Steam (storesearch + appdetails) ----
+// Écarte les entrées qui ne sont pas des jeux (BO/OST, DLC, season pass, artbook, démo…).
+const STEAM_SKIP = /soundtrack|\bost\b|art\s?book|season pass|wallpaper|\bdemo\b|\bdlc\b|\balbum\b|\btracks?\b|\bsongs?\b|arrangement|arranged|\bvinyl\b|original game soundtrack/i;
 async function steamSearch(q){
   const r = await fetch('https://store.steampowered.com/api/storesearch/?cc=fr&l=french&term=' + encodeURIComponent(q));
   const d = await r.json();
-  return (d.items || []).map(g => ({
-    title:    g.name,
-    year:     null,
-    image:    STEAM_CDN + g.id + '/library_600x900.jpg',  // jaquette verticale
-    imageAlt: STEAM_CDN + g.id + '/header.jpg',            // repli paysage
-    synopsis: '', genres: [], achTotal: 0,
-    link:     'https://store.steampowered.com/app/' + g.id,
-    detail:   '/steam/app?appid=' + g.id,                 // l'app le complétera au clic
-  }));
+  return (d.items || [])
+    .filter(g => g.type === 'app' && !STEAM_SKIP.test(g.name || ''))
+    .map(g => ({
+      title:     g.name,
+      year:      null,
+      image:     STEAM_CDN + g.id + '/library_600x900.jpg',  // jaquette verticale
+      imageAlt:  STEAM_CDN + g.id + '/header.jpg',           // repli paysage
+      synopsis:  '', genres: [], platforms: ['PC'], achTotal: 0,
+      link:      'https://store.steampowered.com/app/' + g.id,
+      detail:    '/steam/app?appid=' + g.id,                // l'app le complétera au clic
+    }));
 }
 async function steamApp(url){
   const appid = url.searchParams.get('appid');
@@ -132,10 +157,12 @@ async function steamApp(url){
   const info = d && d[appid] && d[appid].success ? d[appid].data : null;
   if(!info) return json({});
   const y = ((info.release_date && info.release_date.date) || '').match(/\d{4}/);
+  const mc = info.metacritic && info.metacritic.score;
   return json({
     year:     y ? +y[0] : null,
     genres:   (info.genres || []).map(x => x.description),
     achTotal: (info.achievements && info.achievements.total) || 0,
+    rating:   mc ? Math.min(5, Math.round(mc / 20)) : 0,   // Metacritic /100 → /5 arrondi
     synopsis: info.short_description || '',
   });
 }

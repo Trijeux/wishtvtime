@@ -219,12 +219,22 @@
   .meta-item img{width:46px; height:64px; object-fit:cover; border-radius:6px; flex:0 0 auto; background:var(--bg2)}
   .meta-item .mi-ph{width:46px; height:64px; border-radius:6px; flex:0 0 auto; background:var(--bg2)}
   .meta-item .mi-info{flex:1; min-width:0}
-  .meta-item .mi-title{font-weight:700; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .meta-item .mi-title{font-weight:700; font-size:14px; overflow:hidden; overflow-wrap:anywhere;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical}   /* revient à la ligne, 2 lignes max, jamais hors carte */
   .meta-item .mi-sub{font-size:12px; color:var(--txt-dim); margin-top:2px}
   .meta-hint{font-size:13px; color:var(--txt-dim); padding:8px 2px}
   .meta-src{display:flex; align-items:center; gap:10px; margin-top:10px; flex-wrap:wrap}
   .meta-src-lbl{font-size:12px; color:var(--txt-dim); font-weight:600}
   .meta-src .seg button{padding:6px 12px; font-size:12px}
+  /* ---------- Anti-débordement global : rien ne sort de sa carte/modale ---------- */
+  .modal{overflow-wrap:break-word}
+  .modal h2{gap:12px}
+  .modal h2 > span{min-width:0; overflow-wrap:anywhere}   /* titre long dans l'en-tête (vue détail) */
+  .modal h2 .x{flex:0 0 auto}
+  .meta-item .mi-sub{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .tag-pill{max-width:100%; overflow-wrap:anywhere}        /* tag/genre très long */
+  .card-title{overflow-wrap:anywhere}
+  .d-comment, .d-meta, .d-meta b{overflow-wrap:anywhere; min-width:0}
   .tags-input input{background:none;border:none;color:var(--txt);outline:none;flex:1;min-width:80px;font-size:14px;padding:3px}
   .tag-pill{background:var(--accent); color:#fff; font-size:12px; padding:3px 9px; border-radius:14px; display:flex; gap:6px; align-items:center}
   .tag-pill b{cursor:pointer; font-weight:700}
@@ -1288,6 +1298,7 @@ function metaSourceFor(type){
   if(type==='manga') return 'jikan-manga';
   if(type==='film')  return 'tmdb';            // « Film/Série » → TMDB couvre les deux
   if(type==='jeu')   return META.cfg.rawgKey ? 'rawg' : 'worker';  // proxy perso (IGDB/Steam) ; RAWG si clé fournie
+  if(type==='autre') return 'wikipedia';       // sans clé ni proxy (CORS ouvert) : titre + résumé FR + image d'article
   return null;
 }
 // Genres TMDB (id → nom), chargés une seule fois puis gardés en mémoire.
@@ -1338,6 +1349,7 @@ async function searchMeta(type, query){
       image:    a.images?.jpg?.large_image_url || a.images?.jpg?.image_url || '',
       synopsis: a.synopsis || '',
       genres:   (a.genres||[]).map(g=>g.name),
+      rating:   a.score ? Math.min(5, Math.round(a.score/2)) : 0,   // /10 → /5 arrondi
       link:     a.url || '',
     }));
   }
@@ -1352,6 +1364,7 @@ async function searchMeta(type, query){
       image:    a.images?.jpg?.large_image_url || a.images?.jpg?.image_url || '',
       synopsis: a.synopsis || '',
       genres:   (a.genres||[]).map(g=>g.name),
+      rating:   a.score ? Math.min(5, Math.round(a.score/2)) : 0,   // /10 → /5 arrondi
       link:     a.url || '',
     }));
   }
@@ -1373,6 +1386,7 @@ async function searchMeta(type, query){
         image:    x.poster_path ? 'https://image.tmdb.org/t/p/w500'+x.poster_path : '',
         synopsis: x.overview || '',
         genres:   (x.genre_ids||[]).map(id=>gmap[id]).filter(Boolean),
+        rating:   x.vote_count>0 ? Math.min(5, Math.round(x.vote_average/2)) : 0,   // /10 → /5 arrondi
         link:     'https://www.themoviedb.org/'+(isTv?'tv':'movie')+'/'+x.id,
         kind:     isTv ? 'Série' : 'Film',
       };
@@ -1397,6 +1411,7 @@ async function searchMeta(type, query){
         image:    g.background_image || '',           // RAWG : image paysage (pas de jaquette verticale)
         synopsis: '',
         genres:   (g.genres||[]).map(x=>x.name),
+        rating:   g.rating ? Math.min(5, Math.round(g.rating)) : 0,   // RAWG : déjà /5
         link:     g.slug ? 'https://rawg.io/games/'+g.slug : '',
         kind:     'Jeu',
       };
@@ -1426,7 +1441,8 @@ async function searchMeta(type, query){
         title:    g.title,
         year:     g.year || null, total:0,
         image:    g.image || '', imageAlt: g.imageAlt || '',
-        synopsis: g.synopsis || '', genres: g.genres || [], achTotal: g.achTotal || 0,
+        synopsis: g.synopsis || '', genres: g.genres || [], platforms: g.platforms || [], achTotal: g.achTotal || 0,
+        rating:   g.rating || 0,
         link:     g.link || '', kind: 'Jeu',
       };
       // Steam : détails (année/genres/succès/synopsis) récupérés au clic via le worker.
@@ -1438,12 +1454,32 @@ async function searchMeta(type, query){
             if(dd.year && !m.year)      m.year = dd.year;
             if(dd.genres?.length)       m.genres = dd.genres;
             if(dd.achTotal)             m.achTotal = dd.achTotal;
+            if(dd.rating)               m.rating = dd.rating;
             if(dd.synopsis)             m.synopsis = dd.synopsis;
           }catch(e){}
         };
       }
       return m;
     });
+  }
+  if(src==='wikipedia'){
+    // Wikipédia FR : sans clé, CORS ouvert. Un seul appel → titres + résumés + vignettes.
+    const url = 'https://fr.wikipedia.org/w/api.php?action=query&format=json&origin=*'
+      + '&generator=search&gsrsearch='+encodeURIComponent(query)+'&gsrlimit=8'
+      + '&prop=extracts|pageimages&exintro=1&explaintext=1&piprop=thumbnail&pithumbsize=600';
+    const r = await fetch(url);
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d = await r.json();
+    const pages = d.query?.pages ? Object.values(d.query.pages) : [];
+    pages.sort((a,b)=>(a.index||0)-(b.index||0));   // garde l'ordre de pertinence de la recherche
+    return pages.map(p=>({
+      title:    p.title,
+      year:     null, total:0,
+      image:    p.thumbnail?.source || '',
+      synopsis: (p.extract||'').slice(0,800) + ((p.extract||'').length>800?'…':''),
+      genres:   [], platforms:[], achTotal:0,
+      link:     'https://fr.wikipedia.org/wiki/'+encodeURIComponent(p.title.replace(/ /g,'_')),
+    }));
   }
   return [];
 }
@@ -1458,10 +1494,14 @@ async function applyMeta(m){
   if(m.year  && !$('#fYear').value)               $('#fYear').value = m.year;
   if(m.total > 0 && !(+$('#fProgTotal').value))    $('#fProgTotal').value = m.total;
   if(m.achTotal > 0 && !(+$('#fAchTotal').value))  $('#fAchTotal').value = m.achTotal;   // jeux : succès
+  if(m.rating > 0 && !curRating)                   setRating(m.rating);                  // note /5 (arrondie depuis la source)
   if(m.link  && !$('#fLink').value.trim())         $('#fLink').value = m.link;
   if(m.synopsis && !$('#fComment').value.trim())   $('#fComment').value = m.synopsis;
   (m.genres||[]).forEach(g=>{ if(g && !curTags.some(x=>x.toLowerCase()===g.toLowerCase())) curTags.push(g); });
   renderTags();
+  // Plateformes (jeux) : ajoutées automatiquement, sans doublon.
+  (m.platforms||[]).forEach(p=>{ if(p && !curPlatforms.some(x=>x.toLowerCase()===p.toLowerCase())) curPlatforms.push(p); });
+  renderPlatforms();
   $('#metaResults').classList.remove('open');
   // Jaquette : seulement si aucune image manuelle. On tente les sources dans l'ordre
   // (ex. Steam : jaquette verticale, puis repli paysage si elle n'existe pas).
@@ -1500,8 +1540,12 @@ async function runMetaSearch(){
       const el = document.createElement('button');
       el.type = 'button'; el.className = 'meta-item';
       const sub = [m.kind, m.year||'—', m.total ? m.total+(unit?' '+unit:'') : ''].filter(Boolean).join(' · ');
-      el.innerHTML = `${m.image ? `<img src="${escapeHtml(m.image)}" loading="lazy" alt="">` : '<div class="mi-ph"></div>'}
-        <div class="mi-info"><div class="mi-title">${escapeHtml(m.title)}</div><div class="mi-sub">${escapeHtml(sub)}</div></div>`;
+      // Vignette : si la jaquette échoue (ex. Steam sans library_600x900), repli sur l'image paysage, sinon placeholder.
+      const imgTag = m.image
+        ? `<img src="${escapeHtml(m.image)}" loading="lazy" alt="" data-fallback="${escapeHtml(m.imageAlt||'')}"
+             onerror="if(this.dataset.fallback){this.src=this.dataset.fallback;this.dataset.fallback='';}else{this.replaceWith(Object.assign(document.createElement('div'),{className:'mi-ph'}));}">`
+        : '<div class="mi-ph"></div>';
+      el.innerHTML = `${imgTag}<div class="mi-info"><div class="mi-title">${escapeHtml(m.title)}</div><div class="mi-sub">${escapeHtml(sub)}</div></div>`;
       el.onclick = ()=>applyMeta(m);
       box.appendChild(el);
     });
@@ -1584,6 +1628,9 @@ function openModal(id){
   $('#platformEntry').value = '';
   $('#fLink').value      = item?.link || '';
   updateFormType();
+  // Le sélecteur de source jeux revient sur « Auto » à chaque ouverture (évite de rester bloqué sur un forçage).
+  metaGameSrc = 'auto';
+  $('#metaSrcSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on', x.dataset.src==='auto'));
   curTags = item?.tags ? [...item.tags] : [];
   curLists = item?.lists ? [...item.lists] : [];
   renderLists();
