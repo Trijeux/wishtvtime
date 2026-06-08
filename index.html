@@ -311,6 +311,13 @@
   .level-bar{height:10px; background:rgba(0,0,0,.28); border-radius:6px; overflow:hidden}
   .level-bar i{display:block; height:100%; background:#fff; border-radius:6px; transition:width .4s}
   .level-sub{font-size:11px; opacity:.92; margin:6px 2px 0}
+  /* Badges / succès */
+  .badges-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(82px,1fr)); gap:10px; margin-top:8px}
+  .badge-it{background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 6px; text-align:center}
+  .badge-it .bi{font-size:26px; line-height:1}
+  .badge-it .bl{font-size:10px; color:var(--txt-dim); margin-top:5px; line-height:1.2}
+  .badge-it.locked{opacity:.35; filter:grayscale(1)}
+  .badge-it.unlocked{border-color:var(--accent)}
   /* ---------- Apparence ---------- */
   .seg{display:inline-flex; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:hidden}
   .seg button{border:none; background:none; color:var(--txt-dim); padding:9px 16px; cursor:pointer; font-size:14px; font-weight:600}
@@ -1382,6 +1389,49 @@ function computeXP(){
   const cur = 50*level*(level-1), next = 50*(level+1)*level;
   return { xp, level, into: xp-cur, need: next-cur };
 }
+// Badges / succès débloqués selon la collection.
+function computeBadges(){
+  const n = items.length;
+  const done = items.filter(i=>i.status==='termine').length;
+  const ep   = items.filter(i=>i.type==='anime'||i.type==='film').reduce((a,i)=>a+(i.progCur||0),0);
+  const tomes= items.filter(i=>i.type==='manga').reduce((a,i)=>a+(i.progCur||0),0);
+  const g100 = items.filter(i=>i.type==='jeu' && (i.progCur||0)>=100).length;
+  const ach  = items.reduce((a,i)=>a+(i.achCur||0),0);
+  const fav  = items.filter(i=>i.fav).length;
+  const has5 = items.some(i=>i.rating===5);
+  const typesN = new Set(items.map(i=>i.type)).size;
+  const lvl  = computeXP().level;
+  return [
+    {icon:'🌱', label:'Première fiche',        desc:'Ajoute ta 1ʳᵉ fiche',           ok:n>=1},
+    {icon:'📚', label:'Collectionneur',        desc:'10 fiches',                     ok:n>=10},
+    {icon:'🗄️', label:'Bibliothèque',          desc:'50 fiches',                     ok:n>=50},
+    {icon:'🏛️', label:'Maître collectionneur', desc:'100 fiches',                    ok:n>=100},
+    {icon:'✅', label:'Premier terminé',        desc:'Termine 1 fiche',               ok:done>=1},
+    {icon:'🏁', label:'Finisseur',             desc:'10 fiches terminées',           ok:done>=10},
+    {icon:'👑', label:'Achèvement',            desc:'50 fiches terminées',           ok:done>=50},
+    {icon:'📺', label:'Marathonien',           desc:'100 épisodes vus',              ok:ep>=100},
+    {icon:'🍿', label:'Binge-watcher',         desc:'1000 épisodes vus',             ok:ep>=1000},
+    {icon:'📖', label:'Lecteur',               desc:'50 tomes lus',                  ok:tomes>=50},
+    {icon:'💯', label:'Premier 100%',          desc:'Finis un jeu à 100%',           ok:g100>=1},
+    {icon:'🎮', label:'Complétionniste',       desc:'5 jeux à 100%',                 ok:g100>=5},
+    {icon:'🏆', label:'Chasseur de succès',    desc:'100 succès débloqués',          ok:ach>=100},
+    {icon:'⭐', label:'Coup de cœur',           desc:'Mets une note de 5★',           ok:has5},
+    {icon:'❤️', label:'Fan',                    desc:'10 favoris',                    ok:fav>=10},
+    {icon:'🌈', label:'Touche-à-tout',         desc:'Une fiche de chaque type',      ok:typesN>=TYPES.length},
+    {icon:'5️⃣', label:'Niveau 5',              desc:'Atteins le niveau 5',           ok:lvl>=5},
+    {icon:'🔟', label:'Niveau 10',             desc:'Atteins le niveau 10',          ok:lvl>=10},
+  ];
+}
+// Détecte les badges nouvellement débloqués et les annonce par un toast (baseline silencieuse au 1er lancement).
+function checkBadges(){
+  const unlocked = computeBadges().filter(b=>b.ok);
+  const ids = unlocked.map(b=>b.label);
+  let known; try{ known = JSON.parse(localStorage.getItem('mc_badges')||'null'); }catch(e){ known=null; }
+  localStorage.setItem('mc_badges', JSON.stringify(ids));
+  if(known===null) return;                       // 1ʳᵉ fois : on mémorise sans notifier
+  unlocked.filter(b=>!known.includes(b.label))
+    .forEach((b,i)=>setTimeout(()=>toast('🏅 Badge débloqué : '+b.icon+' '+b.label), 500+i*1100));
+}
 // Quelle source pour quel type (null = pas encore supporté → bouton masqué).
 function metaSourceFor(type){
   if(type==='anime') return 'jikan-anime';
@@ -2269,6 +2319,7 @@ const LOCAL = {
 
 // Aiguillage après chaque modification, selon le mode choisi
 async function afterChange(){
+  checkBadges();                              // notifie les badges nouvellement débloqués
   // En local : on écrit dans le geste utilisateur -> l'autorisation est conservée et la sauvegarde continue
   if(SYNC.cfg.mode==='local') await LOCAL.save();
   else SYNC.autoPush();
@@ -2428,6 +2479,14 @@ function openStats(){
   if(watchMin) cards.push(`<div class="stat-card"><div class="v">${fmtDur(watchMin)}</div><div class="k">⏱️ Visionnage estimé</div></div>`);
   if(readMin)  cards.push(`<div class="stat-card"><div class="v">${fmtDur(readMin)}</div><div class="k">📖 Lecture estimée</div></div>`);
   h.push(`<div class="stat-h">En chiffres</div><div class="stat-cards">${cards.join('')}</div>`);
+
+  // 🏅 Badges / succès
+  const badges = computeBadges(), unl = badges.filter(b=>b.ok).length;
+  h.push(`<div class="stat-h">🏅 Badges (${unl}/${badges.length})</div>
+    <div class="badges-grid">${badges.map(b=>`
+      <div class="badge-it ${b.ok?'unlocked':'locked'}" title="${escapeHtml(b.desc)}">
+        <div class="bi">${b.icon}</div><div class="bl">${escapeHtml(b.label)}</div>
+      </div>`).join('')}</div>`);
 
   // 🎯 Objectif annuel (réglable, stocké en local) — basé sur les fiches terminées datées cette année
   const year = new Date().getFullYear();
@@ -2760,6 +2819,7 @@ function bind(){
   META.load();                         // clé(s) de métadonnées (TMDB…) dispo dès le départ
   PROFILE.load();                      // pseudo + photo de profil (niveau/XP)
   render();
+  checkBadges();                       // baseline des badges (silencieuse au 1er lancement)
   // Mode de sauvegarde
   SYNC.load();
   await LOCAL.restore();
