@@ -319,6 +319,9 @@
     font-size:14px; font-weight:600; z-index:99; transition:.3s; box-shadow:0 10px 30px rgba(0,0,0,.4);
   }
   .toast.show{transform:translateX(-50%) translateY(0)}
+  .toast-btn{margin-left:14px; background:var(--accent); color:#fff; border:none; border-radius:8px;
+    padding:6px 12px; font-size:13px; font-weight:700; cursor:pointer; vertical-align:middle}
+  .toast-btn:hover{filter:brightness(1.1)}
   /* sync */
   .sync-dot{display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:2px}
   .sync-dot.off{background:var(--txt-dim)}
@@ -732,6 +735,16 @@
       </div>
       <input type="password" id="cfgRawgKey" placeholder="Clé API RAWG (facultatif, si tu en as une)" style="margin-top:8px">
     </div>
+    <div class="field" style="margin-top:14px; border-top:1px solid var(--line); padding-top:14px">
+      <label>🔐 Coffre chiffré des clés (synchronisé)</label>
+      <input type="password" id="cfgVaultPass" placeholder="Phrase secrète (jamais enregistrée — retiens-la !)">
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:8px">
+        <button class="btn" id="vaultLockBtn" type="button">🔐 Chiffrer &amp; synchroniser</button>
+        <button class="btn" id="vaultUnlockBtn" type="button">🔓 Déverrouiller</button>
+      </div>
+      <div class="help" id="vaultStatus"></div>
+      <div class="help">Tes clés sont chiffrées avec ta phrase puis synchronisées. Sur un autre appareil : configure la synchro, puis entre la même phrase et « Déverrouiller ». 🔒 La phrase n'est jamais sauvegardée — si tu l'oublies, les clés sont irrécupérables (re-saisis-les simplement).</div>
+    </div>
 
     <div class="sync-status" id="syncStatus"></div>
     <div class="modal-actions">
@@ -837,7 +850,16 @@ function saveTomb(){ localStorage.setItem('mc_tomb', JSON.stringify(tombstones))
 // ---- Helpers ----
 const $ = s => document.querySelector(s);
 const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
-function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); }
+let toastTimer = null;
+function toast(msg){ const t=$('#toast'); clearTimeout(toastTimer); t.textContent=msg; t.classList.add('show'); toastTimer=setTimeout(()=>t.classList.remove('show'),2200); }
+// Toast avec un bouton d'action (ex. « Annuler »). L'action s'exécute au clic, sinon le toast disparaît après ms.
+function toastAction(msg, label, onAction, ms=6000){
+  const t=$('#toast'); clearTimeout(toastTimer);
+  t.innerHTML = `<span>${escapeHtml(msg)}</span><button class="toast-btn" id="toastBtn">${escapeHtml(label)}</button>`;
+  t.classList.add('show');
+  toastTimer = setTimeout(()=>t.classList.remove('show'), ms);
+  $('#toastBtn').onclick = ()=>{ clearTimeout(toastTimer); t.classList.remove('show'); onAction(); };
+}
 
 // Compression image -> dataURL (JPEG). max = largeur max en px, q = qualité.
 // Jaquettes : 600px ; fond d'écran : plus grand (voir appel).
@@ -1288,10 +1310,31 @@ let metaLastSource = '';
 // Réglages des sources nécessitant une clé (stockés UNIQUEMENT sur cet appareil).
 const META = {
   // proxyUrl par défaut = Worker public du projet (l'URL n'est pas secrète ; le secret Twitch reste DANS le Worker).
-  cfg:{ tmdbKey:'', rawgKey:'', proxyUrl:'https://wishtvtime-proxy.anthonybarman2003.workers.dev' },
+  cfg:{ tmdbKey:'', rawgKey:'', proxyUrl:'https://wishtvtime-proxy.anthonybarman2003.workers.dev', secretsEnc:null },
   load(){ try{ Object.assign(this.cfg, JSON.parse(localStorage.getItem('mc_meta')||'{}')); }catch(e){} },
   store(){ localStorage.setItem('mc_meta', JSON.stringify(this.cfg)); },
 };
+// ---- Coffre chiffré des clés (synchronisé). Déverrouillé par une phrase secrète JAMAIS stockée. ----
+// PBKDF2 (dérive une clé depuis la phrase) + AES-GCM (chiffre, et vérifie l'intégrité → détecte la mauvaise phrase).
+const _u8b64 = u8 => btoa(String.fromCharCode(...u8));
+const _b64u8 = s  => Uint8Array.from(atob(s), c=>c.charCodeAt(0));
+async function _deriveKey(pass, salt){
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2', salt, iterations:150000, hash:'SHA-256'},
+    base, {name:'AES-GCM', length:256}, false, ['encrypt','decrypt']);
+}
+async function encryptVault(obj, pass){
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv   = crypto.getRandomValues(new Uint8Array(12));
+  const key  = await _deriveKey(pass, salt);
+  const ct   = await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, new TextEncoder().encode(JSON.stringify(obj)));
+  return { v:1, updated:Date.now(), salt:_u8b64(salt), iv:_u8b64(iv), ct:_u8b64(new Uint8Array(ct)) };
+}
+async function decryptVault(blob, pass){
+  const key = await _deriveKey(pass, _b64u8(blob.salt));
+  const pt  = await crypto.subtle.decrypt({name:'AES-GCM', iv:_b64u8(blob.iv)}, key, _b64u8(blob.ct));   // throw si phrase fausse
+  return JSON.parse(new TextDecoder().decode(pt));
+}
 // Quelle source pour quel type (null = pas encore supporté → bouton masqué).
 function metaSourceFor(type){
   if(type==='anime') return 'jikan-anime';
@@ -1753,22 +1796,38 @@ async function save(){
   toast(existing ? '✅ Fiche modifiée' : '✅ Fiche ajoutée');
   await afterChange();
 }
-// Suppression réutilisable (depuis l'édition OU la vue détail)
+// Suppression réutilisable (depuis l'édition OU la vue détail). Renvoie l'item supprimé (pour l'undo).
 async function deleteItem(id){
+  const item = items.find(i=>i.id===id) || null;   // capturé avant suppression (pour pouvoir restaurer)
   tombstones[id] = Date.now();          // on note la suppression (propagée à la synchro)
   saveTomb();
   await DB.del(id);
   items = items.filter(i=>i.id!==id);
   render();
   await afterChange();
+  return item;
+}
+// Restaure une fiche supprimée (annulation) : enlève le tombstone, remet en base, re-synchronise.
+async function restoreItem(item){
+  if(!item) return;
+  delete tombstones[item.id]; saveTomb();
+  item.updated = Date.now();            // plus récent que le tombstone → gagne à la fusion multi-appareils
+  await DB.put(item);
+  items.push(item);
+  render();
+  await afterChange();
+}
+// Toast de suppression avec bouton « Annuler » (restaure la fiche si cliqué dans les 6 s).
+function showDeleteUndo(item){
+  if(item) toastAction('🗑 Fiche supprimée', '↩️ Annuler', async ()=>{ await restoreItem(item); toast('✅ Fiche restaurée'); });
+  else toast('🗑 Fiche supprimée');
 }
 async function removeItem(){
   if(!editingId) return;
   if(!confirm('Supprimer définitivement cette fiche ?')) return;
   const id = editingId;
   closeModal();
-  await deleteItem(id);
-  toast('🗑 Fiche supprimée');
+  showDeleteUndo(await deleteItem(id));
 }
 
 // =========================================================
@@ -1888,7 +1947,7 @@ const SYNC = {
   // Récupère {items, deleted, sha} du dépôt, ou vide si pas encore de fichier
   async pull(){
     const r = await fetch(this._url()+'?ref='+this.cfg.branch, {headers:this._headers(), cache:'no-store'});
-    if(r.status===404) return {items:[], deleted:[], bg:null, sha:null};
+    if(r.status===404) return {items:[], deleted:[], bg:null, secrets:null, sha:null};
     if(!r.ok) throw new Error('pull '+r.status);
     const data = await r.json();
     const json = JSON.parse(this.b64dec(data.content));
@@ -1896,6 +1955,7 @@ const SYNC = {
       items: Array.isArray(json)?json:(json.items||[]),
       deleted: (json && json.deleted) ? json.deleted : [],
       bg: (json && json.bg) ? json.bg : null,
+      secrets: (json && json.secrets) ? json.secrets : null,
       sha:data.sha
     };
   },
@@ -1943,7 +2003,7 @@ const SYNC = {
     clean.forEach(i=>{ if(i.imagePath) referenced.add(i.imagePath); if(i.audioPath) referenced.add(i.audioPath); });
     if(THEME.cfg.bgPath) referenced.add(THEME.cfg.bgPath);
     const bg = {path: THEME.cfg.bgPath||null, updated: THEME.cfg.bgUpdated||0};
-    const jsonStr = JSON.stringify({app:'WishTvTime',version:1,items:clean,deleted,bg}, null, 2);
+    const jsonStr = JSON.stringify({app:'WishTvTime',version:1,items:clean,deleted,bg,secrets:META.cfg.secretsEnc||null}, null, 2);
     const jsonBlob = await this.createBlob(this.b64enc(jsonStr));
 
     // 2) Commit + avancement de branche, avec réessai si la branche a bougé
@@ -2029,10 +2089,14 @@ const SYNC = {
     if(!this.configured()){ if(!silent) toast('⚙️ Configure d\'abord la synchro'); return; }
     this.busy = true; this.setDot('busy'); this.status('Synchronisation...');
     try{
-      const {items:remote, deleted:remoteDel, bg:remoteBg, sha} = await this.pull();
+      const {items:remote, deleted:remoteDel, bg:remoteBg, secrets:remoteSecrets, sha} = await this.pull();
       // combine les suppressions locales + distantes (on garde la plus récente)
       for(const d of remoteDel){ if(d && d.id && (!tombstones[d.id] || d.at>tombstones[d.id])) tombstones[d.id]=d.at; }
       saveTomb();
+      // Coffre chiffré des clés : on adopte le distant s'il est plus récent (ou si on n'en a pas)
+      if(remoteSecrets && (!META.cfg.secretsEnc || (remoteSecrets.updated||0) > (META.cfg.secretsEnc.updated||0))){
+        META.cfg.secretsEnc = remoteSecrets; META.store(); vaultStatus();
+      }
       // Fond d'écran : le plus récent gagne (entre cet appareil et le dépôt)
       if(remoteBg && (remoteBg.updated||0) > (THEME.cfg.bgUpdated||0)){
         THEME.cfg.bgPath = remoteBg.path||null; THEME.cfg.bgUpdated = remoteBg.updated||0; THEME.cfg.bgDirty = false; THEME.store();
@@ -2118,7 +2182,7 @@ const LOCAL = {
   },
   _payload(){
     return JSON.stringify({app:'WishTvTime', version:1, items,
-      deleted:Object.entries(tombstones).map(([id,at])=>({id,at}))}, null, 2);
+      deleted:Object.entries(tombstones).map(([id,at])=>({id,at})), secrets:META.cfg.secretsEnc||null}, null, 2);
   },
   async save(){
     if(this.handle && await this._perm('readwrite')){
@@ -2136,6 +2200,9 @@ const LOCAL = {
     const inDel = (data && data.deleted) || [];
     for(const d of inDel){ if(d && d.id && (!tombstones[d.id] || d.at>tombstones[d.id])) tombstones[d.id]=d.at; }
     saveTomb();
+    if(data.secrets && (!META.cfg.secretsEnc || (data.secrets.updated||0) > (META.cfg.secretsEnc.updated||0))){
+      META.cfg.secretsEnc = data.secrets; META.store();
+    }
     const merged = SYNC.merge(items, incoming);
     for(const id in tombstones){ await DB.del(id); }
     for(const it of merged) await DB.put(it);
@@ -2319,6 +2386,7 @@ function openSync(){
   $('#cfgToken').value = SYNC.cfg.token||'';
   $('#cfgAuto').checked= !!SYNC.cfg.auto;
   META.load(); $('#cfgTmdbKey').value = META.cfg.tmdbKey||''; $('#cfgRawgKey').value = META.cfg.rawgKey||''; $('#cfgProxyUrl').value = META.cfg.proxyUrl||'';
+  $('#cfgVaultPass').value = ''; vaultStatus();
   SYNC.status(SYNC.cfg.last? 'Dernière synchro : '+new Date(SYNC.cfg.last).toLocaleString() : '');
   updateModeUI();
   $('#syncOverlay').classList.add('open');
@@ -2334,6 +2402,39 @@ function saveSyncCfg(){
   META.cfg.tmdbKey = $('#cfgTmdbKey').value.trim(); META.cfg.rawgKey = $('#cfgRawgKey').value.trim(); META.cfg.proxyUrl = $('#cfgProxyUrl').value.trim(); META.store();
   updateModeUI();
   toast('✅ Réglages enregistrés');
+}
+
+// ---- Coffre chiffré : verrouiller (chiffrer + synchroniser) / déverrouiller / état ----
+function vaultStatus(){
+  const el = $('#vaultStatus'); if(!el) return;
+  el.textContent = META.cfg.secretsEnc
+    ? '🔒 Coffre présent (synchronisé). Entre ta phrase puis « Déverrouiller » pour récupérer les clés ici.'
+    : 'Aucun coffre. Renseigne tes clés + une phrase, puis « Chiffrer & synchroniser ».';
+}
+async function vaultLock(){
+  const pass = $('#cfgVaultPass').value;
+  if(!pass){ toast('⚠️ Choisis d\'abord une phrase secrète'); return; }
+  const tmdbKey = $('#cfgTmdbKey').value.trim(), rawgKey = $('#cfgRawgKey').value.trim();
+  if(!tmdbKey && !rawgKey){ toast('⚠️ Aucune clé à chiffrer'); return; }
+  META.cfg.tmdbKey = tmdbKey; META.cfg.rawgKey = rawgKey;
+  META.cfg.secretsEnc = await encryptVault({tmdbKey, rawgKey}, pass);
+  META.store(); vaultStatus();
+  toast('🔐 Clés chiffrées');
+  if(SYNC.configured()) SYNC.run(true);                 // pousse le coffre dans la synchro
+  else toast('ℹ️ Configure la synchro pour les retrouver sur un autre appareil');
+}
+async function vaultUnlock(){
+  const pass = $('#cfgVaultPass').value;
+  if(!pass){ toast('⚠️ Entre ta phrase secrète'); return; }
+  if(!META.cfg.secretsEnc){ toast('Aucun coffre à déverrouiller'); return; }
+  try{
+    const v = await decryptVault(META.cfg.secretsEnc, pass);
+    META.cfg.tmdbKey = v.tmdbKey||''; META.cfg.rawgKey = v.rawgKey||''; META.store();
+    $('#cfgTmdbKey').value = META.cfg.tmdbKey; $('#cfgRawgKey').value = META.cfg.rawgKey;
+    toast('🔓 Clés déverrouillées');
+  }catch(e){
+    toast('❌ Phrase incorrecte');
+  }
 }
 
 // =========================================================
@@ -2378,7 +2479,7 @@ function bind(){
     if(!detailId) return;
     if(!confirm('Supprimer définitivement cette fiche ?')) return;
     const id = detailId; closeDetail();
-    await deleteItem(id); toast('🗑 Fiche supprimée');
+    showDeleteUndo(await deleteItem(id));
   };
   $('#dFav').onclick = ()=>{ if(detailId) toggleFav(detailId); };
   $('#dSound').onclick = ()=>{ const au=$('#dAudio'); if(au.paused){ au.play().catch(()=>{}); $('#dSound').textContent='🔇 Couper'; } else { au.pause(); $('#dSound').textContent='🔊 Écouter'; } };
@@ -2500,6 +2601,8 @@ function bind(){
   $('#cfgTest').onclick = ()=>{ saveSyncCfg(); SYNC.test(); };
   $('#cfgSyncNow').onclick = ()=>{ saveSyncCfg(); SYNC.run(false); };
   $('#cfgSave').onclick = ()=>{ saveSyncCfg(); $('#syncOverlay').classList.remove('open'); };
+  $('#vaultLockBtn').onclick = vaultLock;
+  $('#vaultUnlockBtn').onclick = vaultUnlock;
   $('#cfgForget').onclick = ()=>{ if(confirm('Oublier le compte sur cet appareil ? (tes fiches restent)')){ SYNC.cfg.owner=''; SYNC.cfg.repo=''; SYNC.cfg.token=''; SYNC.cfg.auto=false; SYNC.store(); updateModeUI(); $('#syncOverlay').classList.remove('open'); toast('Compte oublié'); } };
 
   // Raccourci Echap
