@@ -360,8 +360,8 @@
   @media(max-width:560px){
     .modal-actions{ flex-wrap:wrap; gap:8px; }
     .modal-actions > div:empty{ display:none; }
-    .modal-actions > div{ width:100%; display:flex; gap:8px; }
-    .modal-actions .btn{ flex:1; justify-content:center; padding:11px 8px; }
+    .modal-actions > div{ width:100%; display:flex; gap:8px; flex-wrap:wrap; }   /* les boutons (ex. Tester/Synchro/Enregistrer) passent à la ligne au lieu de déborder */
+    .modal-actions .btn{ flex:1 1 auto; min-width:120px; justify-content:center; padding:11px 8px; }
   }
   /* file input hidden */
   #fileInput,#importInput{display:none}
