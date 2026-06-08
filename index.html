@@ -238,6 +238,11 @@
     color:var(--txt); border-radius:9px; padding:7px; font-size:15px; outline:none}
   .qinput:focus{border-color:var(--accent)}
   .d-quick-suf{font-size:13px; color:var(--txt-dim)}
+  /* Mobile : le label passe sur sa propre ligne → « − champ /N + » restent groupés
+     sur une seule rangée (sinon le « + » est éjecté tout seul à la ligne suivante). */
+  @media(max-width:560px){
+    .d-quick-label{flex-basis:100%; min-width:0; margin-bottom:2px}
+  }
   /* ---------- Statistiques ---------- */
   .stat-total{font-size:36px; font-weight:800; line-height:1}
   .stat-total small{font-size:14px; font-weight:600; color:var(--txt-dim)}
