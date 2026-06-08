@@ -288,6 +288,29 @@
   .stat-card{background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; text-align:center}
   .stat-card .v{font-size:22px; font-weight:800}
   .stat-card .k{font-size:11px; color:var(--txt-dim); margin-top:4px}
+  /* ---------- Profil + Niveau/XP ---------- */
+  .profile-box{display:flex; gap:14px; align-items:center; border-radius:16px; padding:16px; margin-bottom:18px;
+    color:#fff; background:linear-gradient(135deg,var(--accent),var(--accent-2))}
+  .profile-pic{flex:0 0 auto; cursor:pointer; padding:0; border:none; background:none; position:relative}
+  .profile-pic .pp-img{width:74px; height:74px; border-radius:50%; border:3px solid rgba(255,255,255,.65);
+    background:rgba(0,0,0,.25); overflow:hidden; display:flex; align-items:center; justify-content:center; font-size:30px}
+  .profile-pic .pp-img img{width:100%; height:100%; object-fit:cover}
+  .profile-pic .lvl{position:absolute; bottom:-4px; right:-4px; background:#fff; color:var(--accent); font-size:11px; font-weight:800;
+    border-radius:10px; padding:1px 7px; box-shadow:0 2px 6px rgba(0,0,0,.3)}
+  /* Widget profil dans le header */
+  .header-profile{display:inline-flex; align-items:center; gap:7px; padding:5px 11px 5px 5px}
+  .hp-avatar{width:30px; height:30px; border-radius:50%; overflow:hidden; background:var(--bg2);
+    display:flex; align-items:center; justify-content:center; font-size:16px; flex:0 0 auto}
+  .hp-avatar img{width:100%; height:100%; object-fit:cover}
+  .hp-lvl{font-size:12px; font-weight:700; color:var(--txt-dim); white-space:nowrap}
+  .profile-main{flex:1; min-width:0}
+  .profile-name{background:rgba(0,0,0,.18); border:none; color:#fff; font-size:17px; font-weight:800;
+    border-radius:8px; padding:5px 10px; width:100%; outline:none}
+  .profile-name::placeholder{color:rgba(255,255,255,.7)}
+  .level-line{display:flex; justify-content:space-between; gap:8px; font-size:13px; font-weight:700; margin:9px 2px 5px}
+  .level-bar{height:10px; background:rgba(0,0,0,.28); border-radius:6px; overflow:hidden}
+  .level-bar i{display:block; height:100%; background:#fff; border-radius:6px; transition:width .4s}
+  .level-sub{font-size:11px; opacity:.92; margin:6px 2px 0}
   /* ---------- Apparence ---------- */
   .seg{display:inline-flex; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:hidden}
   .seg button{border:none; background:none; color:var(--txt-dim); padding:9px 16px; cursor:pointer; font-size:14px; font-weight:600}
@@ -356,10 +379,13 @@
     <button class="btn btn-icon" id="importBtn" title="Importer une sauvegarde">⬆️ Import</button>
     <button class="btn btn-icon" id="syncBtn" title="Synchroniser maintenant"><span id="syncDot" class="sync-dot off"></span>🔄</button>
     <button class="btn btn-icon" id="localSaveBtn" title="Télécharger la sauvegarde" style="display:none">💾</button>
-    <button class="btn btn-icon" id="statsBtn" title="Statistiques">📊</button>
     <button class="btn btn-icon" id="themeBtn" title="Apparence">🎨</button>
     <button class="btn btn-icon" id="settingsBtn" title="Paramètres">⚙️</button>
     <button class="btn btn-primary" id="addBtn">＋ Ajouter</button>
+    <button class="btn header-profile" id="headerProfile" title="Profil & statistiques">
+      <span class="hp-avatar" id="hpAvatar">👤</span>
+      <span class="hp-lvl" id="hpLvl">Niv.1</span>
+    </button>
     <input type="file" id="importInput" accept="application/json">
   </div>
   <div class="filters">
@@ -645,7 +671,8 @@
 <!-- Modal Statistiques -->
 <div class="overlay" id="statsOverlay">
   <div class="modal">
-    <h2><span>📊 Statistiques</span><button class="x" id="closeStats">✕</button></h2>
+    <h2><span>📊 Profil &amp; Statistiques</span><button class="x" id="closeStats">✕</button></h2>
+    <input type="file" id="profilePicInput" accept="image/*" style="display:none">
     <div id="statsBody"></div>
     <div class="modal-actions">
       <div></div>
@@ -1063,6 +1090,7 @@ function folderTile(name){
 let openFolder = null;   // nom de la collection ouverte (null = vue d'accueil)
 
 function render(){
+  renderHeaderProfile();
   refreshTagFilter();
   const grid=$('#grid'), empty=$('#empty'), bar=$('#folderBar');
   if(items.length===0){ grid.innerHTML=''; empty.style.display='block'; bar.style.display='none'; $('#count').textContent=''; return; }
@@ -1334,6 +1362,25 @@ async function decryptVault(blob, pass){
   const key = await _deriveKey(pass, _b64u8(blob.salt));
   const pt  = await crypto.subtle.decrypt({name:'AES-GCM', iv:_b64u8(blob.iv)}, key, _b64u8(blob.ct));   // throw si phrase fausse
   return JSON.parse(new TextDecoder().decode(pt));
+}
+// ---- Profil (pseudo + photo) : stocké en local ET synchronisé (data.json) pour le suivi entre appareils ----
+const PROFILE = {
+  cfg:{ name:'', pic:null, updated:0 },   // pic = dataURL JPEG compressé (petit avatar)
+  load(){ try{ Object.assign(this.cfg, JSON.parse(localStorage.getItem('mc_profile')||'{}')); }catch(e){} },
+  store(){ localStorage.setItem('mc_profile', JSON.stringify(this.cfg)); },
+};
+// Barème XP + niveau (passer au niv. suivant coûte 100×niveau ; cumul pour atteindre L = 50·L·(L-1)).
+function computeXP(){
+  let xp = 0;
+  items.forEach(i=>{
+    if(i.type==='anime'||i.type==='film') xp += (i.progCur||0)*10;
+    else if(i.type==='manga')             xp += (i.progCur||0)*20;
+    else if(i.type==='jeu')               xp += (i.progCur||0)*2 + (i.achCur||0)*15;
+    if(i.status==='termine')              xp += 100;
+  });
+  const level = Math.max(1, Math.floor((1 + Math.sqrt(1 + xp/12.5)) / 2));
+  const cur = 50*level*(level-1), next = 50*(level+1)*level;
+  return { xp, level, into: xp-cur, need: next-cur };
 }
 // Quelle source pour quel type (null = pas encore supporté → bouton masqué).
 function metaSourceFor(type){
@@ -1947,7 +1994,7 @@ const SYNC = {
   // Récupère {items, deleted, sha} du dépôt, ou vide si pas encore de fichier
   async pull(){
     const r = await fetch(this._url()+'?ref='+this.cfg.branch, {headers:this._headers(), cache:'no-store'});
-    if(r.status===404) return {items:[], deleted:[], bg:null, secrets:null, sha:null};
+    if(r.status===404) return {items:[], deleted:[], bg:null, secrets:null, profile:null, sha:null};
     if(!r.ok) throw new Error('pull '+r.status);
     const data = await r.json();
     const json = JSON.parse(this.b64dec(data.content));
@@ -1956,6 +2003,7 @@ const SYNC = {
       deleted: (json && json.deleted) ? json.deleted : [],
       bg: (json && json.bg) ? json.bg : null,
       secrets: (json && json.secrets) ? json.secrets : null,
+      profile: (json && json.profile) ? json.profile : null,
       sha:data.sha
     };
   },
@@ -2003,7 +2051,7 @@ const SYNC = {
     clean.forEach(i=>{ if(i.imagePath) referenced.add(i.imagePath); if(i.audioPath) referenced.add(i.audioPath); });
     if(THEME.cfg.bgPath) referenced.add(THEME.cfg.bgPath);
     const bg = {path: THEME.cfg.bgPath||null, updated: THEME.cfg.bgUpdated||0};
-    const jsonStr = JSON.stringify({app:'WishTvTime',version:1,items:clean,deleted,bg,secrets:META.cfg.secretsEnc||null}, null, 2);
+    const jsonStr = JSON.stringify({app:'WishTvTime',version:1,items:clean,deleted,bg,secrets:META.cfg.secretsEnc||null,profile:PROFILE.cfg}, null, 2);
     const jsonBlob = await this.createBlob(this.b64enc(jsonStr));
 
     // 2) Commit + avancement de branche, avec réessai si la branche a bougé
@@ -2089,13 +2137,17 @@ const SYNC = {
     if(!this.configured()){ if(!silent) toast('⚙️ Configure d\'abord la synchro'); return; }
     this.busy = true; this.setDot('busy'); this.status('Synchronisation...');
     try{
-      const {items:remote, deleted:remoteDel, bg:remoteBg, secrets:remoteSecrets, sha} = await this.pull();
+      const {items:remote, deleted:remoteDel, bg:remoteBg, secrets:remoteSecrets, profile:remoteProfile, sha} = await this.pull();
       // combine les suppressions locales + distantes (on garde la plus récente)
       for(const d of remoteDel){ if(d && d.id && (!tombstones[d.id] || d.at>tombstones[d.id])) tombstones[d.id]=d.at; }
       saveTomb();
       // Coffre chiffré des clés : on adopte le distant s'il est plus récent (ou si on n'en a pas)
       if(remoteSecrets && (!META.cfg.secretsEnc || (remoteSecrets.updated||0) > (META.cfg.secretsEnc.updated||0))){
         META.cfg.secretsEnc = remoteSecrets; META.store(); vaultStatus();
+      }
+      // Profil (pseudo + photo) : le plus récent gagne
+      if(remoteProfile && (remoteProfile.updated||0) > (PROFILE.cfg.updated||0)){
+        PROFILE.cfg = {name:remoteProfile.name||'', pic:remoteProfile.pic||null, updated:remoteProfile.updated||0}; PROFILE.store();
       }
       // Fond d'écran : le plus récent gagne (entre cet appareil et le dépôt)
       if(remoteBg && (remoteBg.updated||0) > (THEME.cfg.bgUpdated||0)){
@@ -2182,7 +2234,7 @@ const LOCAL = {
   },
   _payload(){
     return JSON.stringify({app:'WishTvTime', version:1, items,
-      deleted:Object.entries(tombstones).map(([id,at])=>({id,at})), secrets:META.cfg.secretsEnc||null}, null, 2);
+      deleted:Object.entries(tombstones).map(([id,at])=>({id,at})), secrets:META.cfg.secretsEnc||null, profile:PROFILE.cfg}, null, 2);
   },
   async save(){
     if(this.handle && await this._perm('readwrite')){
@@ -2202,6 +2254,9 @@ const LOCAL = {
     saveTomb();
     if(data.secrets && (!META.cfg.secretsEnc || (data.secrets.updated||0) > (META.cfg.secretsEnc.updated||0))){
       META.cfg.secretsEnc = data.secrets; META.store();
+    }
+    if(data.profile && (data.profile.updated||0) > (PROFILE.cfg.updated||0)){
+      PROFILE.cfg = {name:data.profile.name||'', pic:data.profile.pic||null, updated:data.profile.updated||0}; PROFILE.store();
     }
     const merged = SYNC.merge(items, incoming);
     for(const id in tombstones){ await DB.del(id); }
@@ -2294,12 +2349,36 @@ function openTheme(){ THEME.load(); renderThemePanel(); $('#themeOverlay').class
 // =========================================================
 //  STATISTIQUES
 // =========================================================
+function wireProfile(){
+  const pp = $('#profilePic'); if(pp) pp.onclick = ()=>$('#profilePicInput').click();
+  const pn = $('#profileName'); if(pn) pn.onchange = ()=>{ PROFILE.cfg.name = pn.value.trim().slice(0,24); PROFILE.cfg.updated = Date.now(); PROFILE.store(); renderHeaderProfile(); afterChange(); };
+}
+// Met à jour le widget profil du header (avatar + niveau) — appelé à chaque rendu.
+function renderHeaderProfile(){
+  const P = computeXP(), av = $('#hpAvatar'), lv = $('#hpLvl');
+  if(av) av.innerHTML = PROFILE.cfg.pic ? `<img src="${PROFILE.cfg.pic}" alt="">` : '👤';
+  if(lv) lv.textContent = 'Niv.'+P.level;
+}
+function profileBanner(){
+  const P = computeXP(), pic = PROFILE.cfg.pic, pctL = P.need ? Math.round(P.into/P.need*100) : 0;
+  return `<div class="profile-box">
+    <button class="profile-pic" id="profilePic" title="Changer la photo">
+      <span class="pp-img">${pic ? `<img src="${pic}" alt="">` : '👤'}</span><span class="lvl">Niv.${P.level}</span>
+    </button>
+    <div class="profile-main">
+      <input class="profile-name" id="profileName" maxlength="24" value="${escapeHtml(PROFILE.cfg.name||'')}" placeholder="Ton pseudo">
+      <div class="level-line"><span>Niveau ${P.level}</span><span>${P.into} / ${P.need} XP</span></div>
+      <div class="level-bar"><i style="width:${pctL}%"></i></div>
+      <div class="level-sub">${P.xp} XP au total · plus que ${P.need-P.into} XP pour le niveau ${P.level+1}</div>
+    </div>
+  </div>`;
+}
 function openStats(){
   const n = items.length;
-  const h = [];
+  const h = [profileBanner()];
   if(n===0){
-    h.push(`<p class="help" style="margin-top:0">Ta collection est vide — ajoute des fiches pour voir des stats.</p>`);
-    $('#statsBody').innerHTML = h.join(''); $('#statsOverlay').classList.add('open'); return;
+    h.push(`<p class="help">Ta collection est vide — ajoute des fiches pour gagner de l'XP et voir tes stats.</p>`);
+    $('#statsBody').innerHTML = h.join(''); wireProfile(); $('#statsOverlay').classList.add('open'); return;
   }
   // barres génériques (liste {label,color,n})
   const bars = (rows)=>{
@@ -2331,6 +2410,9 @@ function openStats(){
   const sumEp = items.filter(i=>i.type==='anime'||i.type==='film').reduce((a,i)=>a+(i.progCur||0),0);
   const sumTomes = items.filter(i=>i.type==='manga').reduce((a,i)=>a+(i.progCur||0),0);
   const done = items.filter(i=>i.status==='termine').length;
+  // Temps estimé : épisodes × 24 min (anime/film), tomes × 45 min (manga)
+  const fmtDur = min => { const h=Math.round(min/60); if(h<1) return Math.round(min)+' min'; if(h<24) return h+' h'; return Math.floor(h/24)+' j '+(h%24)+' h'; };
+  const watchMin = sumEp*24, readMin = sumTomes*45;
 
   const cards = [];
   cards.push(`<div class="stat-card"><div class="v">${avg}${avg!=='–'?' ★':''}</div><div class="k">Note moyenne</div></div>`);
@@ -2343,7 +2425,37 @@ function openStats(){
     cards.push(`<div class="stat-card"><div class="v">${avgPct}%</div><div class="k">Complétion jeux (moy.)</div></div>`);
     if(achTot) cards.push(`<div class="stat-card"><div class="v">${achDone}/${achTot}</div><div class="k">Succès débloqués</div></div>`);
   }
+  if(watchMin) cards.push(`<div class="stat-card"><div class="v">${fmtDur(watchMin)}</div><div class="k">⏱️ Visionnage estimé</div></div>`);
+  if(readMin)  cards.push(`<div class="stat-card"><div class="v">${fmtDur(readMin)}</div><div class="k">📖 Lecture estimée</div></div>`);
   h.push(`<div class="stat-h">En chiffres</div><div class="stat-cards">${cards.join('')}</div>`);
+
+  // 🎯 Objectif annuel (réglable, stocké en local) — basé sur les fiches terminées datées cette année
+  const year = new Date().getFullYear();
+  const goal = +localStorage.getItem('mc_goal') || 0;
+  const doneThisYear = items.filter(i=>i.status==='termine' && (i.dateDone||'').startsWith(String(year))).length;
+  const gpct = goal>0 ? Math.min(100, Math.round(doneThisYear/goal*100)) : 0;
+  h.push(`<div class="stat-h">🎯 Objectif ${year}</div>
+    <div class="stat-row">
+      <span class="lbl">Terminés cette année</span>
+      <span class="barwrap"><i style="width:${gpct}%;background:var(--ok)"></i></span>
+      <span class="cnt">${doneThisYear}${goal>0?'/'+goal:''}</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px; margin-top:8px">
+      <span class="help" style="margin:0">Mon objectif :</span>
+      <input type="number" id="statGoal" class="qinput" min="0" value="${goal||''}" placeholder="ex : 20">
+      <span class="help" style="margin:0">fiches / an</span>
+    </div>`);
+
+  // Terminés par mois (12 derniers mois), d'après la date « terminé / vu »
+  const byMonth = {};
+  items.forEach(i=>{ if(i.status==='termine' && i.dateDone){ byMonth[i.dateDone.slice(0,7)] = (byMonth[i.dateDone.slice(0,7)]||0)+1; } });
+  const now = new Date(), months = [];
+  for(let k=11;k>=0;k--){
+    const d = new Date(now.getFullYear(), now.getMonth()-k, 1);
+    const key = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    months.push({label: d.toLocaleDateString('fr-FR',{month:'short',year:'2-digit'}), n: byMonth[key]||0});
+  }
+  if(months.some(m=>m.n>0)) h.push(`<div class="stat-h">Terminés par mois (12 derniers)</div>${bars(months)}`);
 
   // Top plateformes
   const platCount = {};
@@ -2352,6 +2464,9 @@ function openStats(){
   if(topPlat.length) h.push(`<div class="stat-h">Top plateformes</div>${bars(topPlat)}`);
 
   $('#statsBody').innerHTML = h.join('');
+  wireProfile();
+  const gi = $('#statGoal');
+  if(gi) gi.onchange = ()=>{ localStorage.setItem('mc_goal', String(Math.max(0, +gi.value||0))); openStats(); };
   $('#statsOverlay').classList.add('open');
 }
 
@@ -2488,7 +2603,14 @@ function bind(){
   $('#detailOverlay').onclick = e=>{ if(e.target===$('#detailOverlay') && dDownTarget===$('#detailOverlay')) closeDetail(); };
 
   // Statistiques
-  $('#statsBtn').onclick = openStats;
+  $('#headerProfile').onclick = openStats;
+  $('#profilePicInput').onchange = async e=>{
+    if(e.target.files[0]){
+      PROFILE.cfg.pic = await compress(e.target.files[0], 256, .85);   // petit avatar
+      PROFILE.cfg.updated = Date.now(); PROFILE.store(); renderHeaderProfile(); afterChange(); openStats();
+    }
+    e.target.value='';
+  };
   $('#closeStats').onclick = ()=>$('#statsOverlay').classList.remove('open');
   $('#closeStats2').onclick = ()=>$('#statsOverlay').classList.remove('open');
   let stDown=null;
@@ -2636,6 +2758,7 @@ function bind(){
   items = await DB.all();
   loadTomb();
   META.load();                         // clé(s) de métadonnées (TMDB…) dispo dès le départ
+  PROFILE.load();                      // pseudo + photo de profil (niveau/XP)
   render();
   // Mode de sauvegarde
   SYNC.load();
