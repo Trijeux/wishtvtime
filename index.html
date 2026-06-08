@@ -241,7 +241,7 @@
   .modal h2 > span{min-width:0; overflow-wrap:anywhere}   /* titre long dans l'en-tête (vue détail) */
   .modal h2 .x{flex:0 0 auto}
   .meta-item .mi-sub{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-  .tag-pill{max-width:100%; overflow-wrap:anywhere}        /* tag/genre très long */
+  .tag-pill{white-space:nowrap}                            /* le tag reste sur une ligne (jamais découpé verticalement) */
   .card-title{overflow-wrap:anywhere}
   .d-comment, .d-meta, .d-meta b{overflow-wrap:anywhere; min-width:0}
   .tags-input input{background:none;border:none;color:var(--txt);outline:none;flex:1;min-width:80px;font-size:14px;padding:3px}
