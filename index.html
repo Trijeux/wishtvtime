@@ -199,6 +199,10 @@
   .rate-pick span.on{color:var(--warn)}
   .tags-input{display:flex; flex-wrap:wrap; gap:6px; align-items:center; background:var(--card);
     border:1px solid var(--line); border-radius:9px; padding:7px 10px}
+  /* Champ + bouton « + » : ajout fiable au tap (mobile : Entrée/Espace n'émettent pas d'événement fiable) */
+  .tag-row{display:flex; gap:8px; align-items:stretch}
+  .tag-row .tags-input{flex:1; min-width:0}
+  .tag-add{flex:0 0 auto; padding:0 16px; font-size:22px; line-height:1}
   .tags-input input{background:none;border:none;color:var(--txt);outline:none;flex:1;min-width:80px;font-size:14px;padding:3px}
   .tag-pill{background:var(--accent); color:#fff; font-size:12px; padding:3px 9px; border-radius:14px; display:flex; gap:6px; align-items:center}
   .tag-pill b{cursor:pointer; font-weight:700}
@@ -261,6 +265,15 @@
   .modal-actions .right{display:flex; gap:10px}
   .btn-danger{background:transparent; border:1px solid var(--bad); color:var(--bad)}
   .btn-danger:hover{background:var(--bad); color:#fff}
+  /* Mobile : les boutons d'action des modales (surtout la vue détail) se rangent
+     proprement — chaque groupe sur sa propre ligne, boutons à largeur égale,
+     plutôt que de déborder/se tasser sur 2 étages mal alignés. */
+  @media(max-width:560px){
+    .modal-actions{ flex-wrap:wrap; gap:8px; }
+    .modal-actions > div:empty{ display:none; }
+    .modal-actions > div{ width:100%; display:flex; gap:8px; }
+    .modal-actions .btn{ flex:1; justify-content:center; padding:11px 8px; }
+  }
   /* file input hidden */
   #fileInput,#importInput{display:none}
   .toast{
@@ -383,8 +396,11 @@
         </div>
         <div class="field">
           <label>Tags</label>
-          <div class="tags-input" id="tagsInput">
-            <input type="text" id="tagEntry" placeholder="Tag puis Entrée ou Espace…">
+          <div class="tag-row">
+            <div class="tags-input" id="tagsInput">
+              <input type="text" id="tagEntry" placeholder="Tag puis Entrée ou +">
+            </div>
+            <button type="button" class="btn tag-add" id="tagAdd" title="Ajouter le tag">＋</button>
           </div>
           <div class="sugg" id="tagsSugg"></div>
         </div>
@@ -392,8 +408,11 @@
     </div>
     <div class="field">
       <label>📚 Listes / collections</label>
-      <div class="tags-input" id="listsBox">
-        <input type="text" id="listEntry" placeholder="Liste + Entrée/Espace, ou clique ci-dessous…">
+      <div class="tag-row">
+        <div class="tags-input" id="listsBox">
+          <input type="text" id="listEntry" placeholder="Liste + Entrée ou +, ou clique ci-dessous…">
+        </div>
+        <button type="button" class="btn tag-add" id="listAdd" title="Ajouter la liste">＋</button>
       </div>
       <div class="sugg" id="listsSugg"></div>
     </div>
@@ -428,8 +447,11 @@
     <div class="row2">
       <div class="field">
         <label>Plateforme</label>
-        <div class="tags-input" id="platformBox">
-          <input type="text" id="platformEntry" placeholder="Plateforme + Entrée/Espace, ou clique ci-dessous…">
+        <div class="tag-row">
+          <div class="tags-input" id="platformBox">
+            <input type="text" id="platformEntry" placeholder="Plateforme + Entrée ou +…">
+          </div>
+          <button type="button" class="btn tag-add" id="platformAdd" title="Ajouter la plateforme">＋</button>
         </div>
         <div class="sugg" id="platformSugg"></div>
       </div>
@@ -1200,6 +1222,11 @@ function showAudioTrim(file){
   } else { trim.style.display='none'; prev.removeAttribute('src'); }
 }
 function allTags(){ const s=new Set(); items.forEach(i=>(i.tags||[]).forEach(t=>s.add(t))); return [...s].sort(); }
+function addTag(name){
+  name=(name||'').trim().replace(/,$/,'');
+  if(name && !curTags.some(x=>x.toLowerCase()===name.toLowerCase())) curTags.push(name);
+  $('#tagEntry').value=''; renderTags();
+}
 function renderTags(){
   const box=$('#tagsInput'); box.querySelectorAll('.tag-pill').forEach(e=>e.remove());
   const entry=$('#tagEntry');
@@ -2035,14 +2062,12 @@ function bind(){
 
   // Tags
   $('#tagEntry').onkeydown = e=>{
-    if(e.key==='Enter' || e.key===',' || e.key===' '){ e.preventDefault();
-      const v=e.target.value.trim().replace(/,$/,'');
-      if(v && !curTags.includes(v)){ curTags.push(v); renderTags(); }
-      e.target.value='';
-    } else if(e.key==='Backspace' && !e.target.value && curTags.length){
-      curTags.pop(); renderTags();
-    }
+    if(e.key==='Enter' || e.key===',' || e.key===' '){ e.preventDefault(); addTag(e.target.value); }
+    else if(e.key==='Backspace' && !e.target.value && curTags.length){ curTags.pop(); renderTags(); }
   };
+  $('#tagAdd').onclick      = ()=>addTag($('#tagEntry').value);
+  $('#listAdd').onclick     = ()=>addList($('#listEntry').value);
+  $('#platformAdd').onclick = ()=>addPlatform($('#platformEntry').value);
 
   // Listes / collections
   $('#listEntry').onkeydown = e=>{
