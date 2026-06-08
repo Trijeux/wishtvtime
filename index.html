@@ -302,11 +302,14 @@
   .hp-avatar{width:30px; height:30px; border-radius:50%; overflow:hidden; background:var(--bg2);
     display:flex; align-items:center; justify-content:center; font-size:16px; flex:0 0 auto}
   .hp-avatar img{width:100%; height:100%; object-fit:cover}
-  .hp-lvl{font-size:12px; font-weight:700; color:var(--txt-dim); white-space:nowrap}
+  .hp-text{display:flex; flex-direction:column; align-items:flex-start; line-height:1.15; min-width:0}
+  .hp-name{font-size:12px; font-weight:800; color:var(--txt); max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .hp-lvl{font-size:11px; font-weight:700; color:var(--txt-dim); white-space:nowrap}
   .profile-main{flex:1; min-width:0}
   .profile-name{background:rgba(0,0,0,.18); border:none; color:#fff; font-size:17px; font-weight:800;
     border-radius:8px; padding:5px 10px; width:100%; outline:none}
   .profile-name::placeholder{color:rgba(255,255,255,.7)}
+  .profile-title{font-size:12.5px; font-weight:800; margin:5px 2px 0; letter-spacing:.2px}
   .level-line{display:flex; justify-content:space-between; gap:8px; font-size:13px; font-weight:700; margin:9px 2px 5px}
   .level-bar{height:10px; background:rgba(0,0,0,.28); border-radius:6px; overflow:hidden}
   .level-bar i{display:block; height:100%; background:#fff; border-radius:6px; transition:width .4s}
@@ -377,6 +380,13 @@
 <body>
 <header>
   <div class="head-row">
+    <button class="btn header-profile" id="headerProfile" title="Profil & statistiques">
+      <span class="hp-avatar" id="hpAvatar">👤</span>
+      <span class="hp-text">
+        <span class="hp-name" id="hpName" style="display:none"></span>
+        <span class="hp-lvl" id="hpLvl">Niv.1</span>
+      </span>
+    </button>
     <div class="logo">Ma<span>Collection</span></div>
     <div class="search">
       🔎<input type="text" id="searchInput" placeholder="Rechercher un titre...">
@@ -389,10 +399,6 @@
     <button class="btn btn-icon" id="themeBtn" title="Apparence">🎨</button>
     <button class="btn btn-icon" id="settingsBtn" title="Paramètres">⚙️</button>
     <button class="btn btn-primary" id="addBtn">＋ Ajouter</button>
-    <button class="btn header-profile" id="headerProfile" title="Profil & statistiques">
-      <span class="hp-avatar" id="hpAvatar">👤</span>
-      <span class="hp-lvl" id="hpLvl">Niv.1</span>
-    </button>
     <input type="file" id="importInput" accept="application/json">
   </div>
   <div class="filters">
@@ -1389,6 +1395,13 @@ function computeXP(){
   const cur = 50*level*(level-1), next = 50*(level+1)*level;
   return { xp, level, into: xp-cur, need: next-cur };
 }
+// Titre de profil évolutif selon le niveau.
+const TITLES = [
+  [1,'🥉 Novice'], [3,'📗 Amateur'], [5,'🔥 Passionné'], [10,'🎌 Otaku'],
+  [15,'📚 Collectionneur'], [20,'🧠 Expert'], [30,'⚔️ Maître'], [50,'👑 Légende'],
+];
+function levelTitle(lvl){ let name = TITLES[0][1]; for(const [min,n] of TITLES){ if(lvl>=min) name=n; } return name; }
+function nextTitle(lvl){ return TITLES.find(([min])=>min>lvl) || null; }   // [niveau, nom] du prochain titre, ou null
 // Badges / succès débloqués selon la collection.
 function computeBadges(){
   const n = items.length;
@@ -2406,9 +2419,10 @@ function wireProfile(){
 }
 // Met à jour le widget profil du header (avatar + niveau) — appelé à chaque rendu.
 function renderHeaderProfile(){
-  const P = computeXP(), av = $('#hpAvatar'), lv = $('#hpLvl');
+  const P = computeXP(), av = $('#hpAvatar'), lv = $('#hpLvl'), nm = $('#hpName');
   if(av) av.innerHTML = PROFILE.cfg.pic ? `<img src="${PROFILE.cfg.pic}" alt="">` : '👤';
   if(lv) lv.textContent = 'Niv.'+P.level;
+  if(nm){ const name = (PROFILE.cfg.name||'').trim(); nm.textContent = name; nm.style.display = name ? '' : 'none'; }
 }
 function profileBanner(){
   const P = computeXP(), pic = PROFILE.cfg.pic, pctL = P.need ? Math.round(P.into/P.need*100) : 0;
@@ -2418,9 +2432,10 @@ function profileBanner(){
     </button>
     <div class="profile-main">
       <input class="profile-name" id="profileName" maxlength="24" value="${escapeHtml(PROFILE.cfg.name||'')}" placeholder="Ton pseudo">
+      <div class="profile-title">${levelTitle(P.level)}</div>
       <div class="level-line"><span>Niveau ${P.level}</span><span>${P.into} / ${P.need} XP</span></div>
       <div class="level-bar"><i style="width:${pctL}%"></i></div>
-      <div class="level-sub">${P.xp} XP au total · plus que ${P.need-P.into} XP pour le niveau ${P.level+1}</div>
+      <div class="level-sub">${P.xp} XP au total · niveau ${P.level+1} dans ${P.need-P.into} XP${nextTitle(P.level)?` · prochain titre : ${nextTitle(P.level)[1]} (niv. ${nextTitle(P.level)[0]})`:''}</div>
     </div>
   </div>`;
 }
