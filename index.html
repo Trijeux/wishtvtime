@@ -206,7 +206,25 @@
   /* Champ + bouton « + » : ajout fiable au tap (mobile : Entrée/Espace n'émettent pas d'événement fiable) */
   .tag-row{display:flex; gap:8px; align-items:stretch}
   .tag-row .tags-input{flex:1; min-width:0}
+  .tag-row > input{flex:1; min-width:0; width:auto}
   .tag-add{flex:0 0 auto; padding:0 16px; font-size:22px; line-height:1}
+  /* ---------- Métadonnées en ligne (style Playnite) ---------- */
+  .meta-btn{flex:0 0 auto; white-space:nowrap}
+  .meta-results{display:none; flex-direction:column; gap:8px; margin-top:10px; max-height:340px; overflow-y:auto}
+  .meta-results.open{display:flex}
+  .meta-item{display:flex; gap:10px; align-items:center; width:100%; text-align:left;
+    background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px; cursor:pointer;
+    color:var(--txt); font:inherit; transition:.15s}
+  .meta-item:hover{background:var(--card-h); border-color:var(--accent)}
+  .meta-item img{width:46px; height:64px; object-fit:cover; border-radius:6px; flex:0 0 auto; background:var(--bg2)}
+  .meta-item .mi-ph{width:46px; height:64px; border-radius:6px; flex:0 0 auto; background:var(--bg2)}
+  .meta-item .mi-info{flex:1; min-width:0}
+  .meta-item .mi-title{font-weight:700; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .meta-item .mi-sub{font-size:12px; color:var(--txt-dim); margin-top:2px}
+  .meta-hint{font-size:13px; color:var(--txt-dim); padding:8px 2px}
+  .meta-src{display:flex; align-items:center; gap:10px; margin-top:10px; flex-wrap:wrap}
+  .meta-src-lbl{font-size:12px; color:var(--txt-dim); font-weight:600}
+  .meta-src .seg button{padding:6px 12px; font-size:12px}
   .tags-input input{background:none;border:none;color:var(--txt);outline:none;flex:1;min-width:80px;font-size:14px;padding:3px}
   .tag-pill{background:var(--accent); color:#fff; font-size:12px; padding:3px 9px; border-radius:14px; display:flex; gap:6px; align-items:center}
   .tag-pill b{cursor:pointer; font-weight:700}
@@ -307,6 +325,10 @@
   .sync-status{font-size:12px; color:var(--txt-dim); margin-top:10px}
   label.switch{display:flex; align-items:center; gap:10px; cursor:pointer; font-size:14px; color:var(--txt)}
   label.switch input{width:auto}
+  /* Pied de page : lien open source */
+  .site-footer{text-align:center; padding:26px 20px 40px; color:var(--txt-dim); font-size:13px}
+  .site-footer a{color:var(--txt-dim); text-decoration:none; transition:.15s}
+  .site-footer a:hover{color:var(--accent-2)}
 </style>
 </head>
 <body>
@@ -369,6 +391,10 @@
   </div>
 </main>
 
+<footer class="site-footer">
+  <a href="https://github.com/Trijeux/wishtvtime" target="_blank" rel="noopener">⭐ WishTvTime — open source sur GitHub</a>
+</footer>
+
 <!-- Modal -->
 <div class="overlay" id="overlay">
   <div class="modal">
@@ -385,7 +411,19 @@
       <div>
         <div class="field">
           <label>Titre *</label>
-          <input type="text" id="fTitle" placeholder="Ex : One Piece">
+          <div class="tag-row">
+            <input type="text" id="fTitle" placeholder="Ex : One Piece">
+            <button type="button" class="btn meta-btn" id="metaBtn" title="Chercher les infos en ligne">🔎 Métadonnées</button>
+          </div>
+          <div class="meta-src" id="metaSrc" style="display:none">
+            <span class="meta-src-lbl">Source (test) :</span>
+            <div class="seg" id="metaSrcSeg">
+              <button type="button" data-src="auto" class="on">Auto</button>
+              <button type="button" data-src="steam">Steam</button>
+              <button type="button" data-src="igdb">IGDB</button>
+            </div>
+          </div>
+          <div class="meta-results" id="metaResults"></div>
         </div>
         <div class="row2">
           <div class="field">
@@ -663,6 +701,26 @@
         </div>
         <div id="localSupportNote" class="help"></div>
       </div>
+    </div>
+
+    <!-- ===== Métadonnées en ligne ===== -->
+    <div class="field" style="margin-top:18px; border-top:1px solid var(--line); padding-top:16px">
+      <label>🔎 Métadonnées — Films / Séries (TMDB)</label>
+      <input type="password" id="cfgTmdbKey" placeholder="Clé API TMDB (v3)">
+      <div class="help">
+        Gratuit : crée un compte sur <a href="https://www.themoviedb.org/signup" target="_blank" rel="noopener">themoviedb.org</a>,
+        puis <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">Paramètres → API</a> → copie la <b>clé API (v3 auth)</b>.
+        🔒 Stockée uniquement sur cet appareil.
+      </div>
+    </div>
+    <div class="field">
+      <label>🎮 Métadonnées — Jeux (proxy)</label>
+      <input type="url" id="cfgProxyUrl" placeholder="https://wishtvtime-proxy.xxxxx.workers.dev">
+      <div class="help">
+        Colle l'URL de <b>ton proxy</b> (Cloudflare Worker gratuit). Il interroge <b>IGDB</b> (la base de Playnite) si tu l'as configuré, sinon <b>Steam</b>.
+        👉 Crée-le en 5 min en suivant le fichier <code>wishtvtime-proxy.worker.js</code>. 🔒 Stocké uniquement sur cet appareil.
+      </div>
+      <input type="password" id="cfgRawgKey" placeholder="Clé API RAWG (facultatif, si tu en as une)" style="margin-top:8px">
     </div>
 
     <div class="sync-status" id="syncStatus"></div>
@@ -1150,6 +1208,10 @@ function updateFormType(){
   $('#achField').style.display = isGame ? 'block' : 'none';
   // Plateformes : on régénère les suggestions cliquables selon le type
   renderPlatforms();
+  // Métadonnées en ligne : bouton visible seulement pour les types ayant une source.
+  $('#metaBtn').style.display = metaSourceFor(type) ? 'inline-flex' : 'none';
+  $('#metaSrc').style.display = (type==='jeu' && metaSourceFor(type)==='worker') ? 'flex' : 'none';  // forçage source : jeux via proxy
+  $('#metaResults').classList.remove('open'); $('#metaResults').innerHTML = '';
 }
 
 // Affiche les pastilles de plateformes choisies + les suggestions cliquables
@@ -1205,6 +1267,256 @@ function setImage(data){
   if(data){ prev.src=data; prev.style.display='block'; ph.style.display='none'; clr.style.display='block'; }
   else { prev.style.display='none'; ph.style.display='block'; clr.style.display='none'; }
 }
+// =========================================================
+//  MÉTADONNÉES EN LIGNE (style Playnite) — offline-safe
+//  La saisie reste 100% manuelle ; ce bouton ne fait QUE proposer.
+//  On ajoute les sources une par une : anime (Jikan) → manga → film → série → jeu.
+// =========================================================
+// Forçage de source pour les jeux (test) : 'auto' | 'steam' | 'igdb'. Et dernière source réellement utilisée.
+let metaGameSrc = 'auto';
+let metaLastSource = '';
+// Réglages des sources nécessitant une clé (stockés UNIQUEMENT sur cet appareil).
+const META = {
+  // proxyUrl par défaut = Worker public du projet (l'URL n'est pas secrète ; le secret Twitch reste DANS le Worker).
+  cfg:{ tmdbKey:'', rawgKey:'', proxyUrl:'https://wishtvtime-proxy.anthonybarman2003.workers.dev' },
+  load(){ try{ Object.assign(this.cfg, JSON.parse(localStorage.getItem('mc_meta')||'{}')); }catch(e){} },
+  store(){ localStorage.setItem('mc_meta', JSON.stringify(this.cfg)); },
+};
+// Quelle source pour quel type (null = pas encore supporté → bouton masqué).
+function metaSourceFor(type){
+  if(type==='anime') return 'jikan-anime';
+  if(type==='manga') return 'jikan-manga';
+  if(type==='film')  return 'tmdb';            // « Film/Série » → TMDB couvre les deux
+  if(type==='jeu')   return META.cfg.rawgKey ? 'rawg' : 'worker';  // proxy perso (IGDB/Steam) ; RAWG si clé fournie
+  return null;
+}
+// Genres TMDB (id → nom), chargés une seule fois puis gardés en mémoire.
+let tmdbGenres = null;
+async function loadTmdbGenres(key){
+  if(tmdbGenres) return;
+  const out = {movie:{}, tv:{}};
+  for(const kind of ['movie','tv']){
+    try{
+      const r = await fetch('https://api.themoviedb.org/3/genre/'+kind+'/list?api_key='+key+'&language=fr-FR');
+      if(r.ok){ const d = await r.json(); (d.genres||[]).forEach(g=>out[kind][g.id]=g.name); }
+    }catch(e){}
+  }
+  tmdbGenres = out;
+}
+// Télécharge une image distante → dataURL JPEG compressé (stockée en local => visible hors-ligne).
+// On passe par une passerelle qui ajoute les en-têtes CORS + redimensionne côté serveur
+// (sinon `fetch` cross-origin ne peut pas lire le contenu). Plusieurs replis pour la fiabilité.
+async function urlToDataURL(url, max=600){
+  const gw = u => '?url='+encodeURIComponent(u)+'&w='+max+'&output=jpg&q=82';
+  const candidates = [
+    'https://wsrv.nl/'+gw(url),
+    'https://images.weserv.nl/'+gw(url),
+    url,                              // tentative directe (si la source autorise déjà CORS)
+  ];
+  for(const src of candidates){
+    try{
+      const r = await fetch(src, {mode:'cors'});
+      if(!r.ok) continue;
+      const blob = await r.blob();
+      if(!blob || !blob.type.startsWith('image')) continue;
+      return await blobToDataURL(blob);
+    }catch(e){ console.warn('[meta] passerelle image KO :', src.split('?')[0], e.message); }
+  }
+  throw new Error('toutes les passerelles ont échoué');
+}
+// Recherche en ligne selon le type. Retourne une liste normalisée de propositions.
+async function searchMeta(type, query){
+  const src = metaSourceFor(type);
+  if(src==='jikan-anime'){
+    const r = await fetch('https://api.jikan.moe/v4/anime?q='+encodeURIComponent(query)+'&limit=8&sfw');
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d = await r.json();
+    return (d.data||[]).map(a=>({
+      title:    a.title_english || a.title,
+      year:     a.year || (a.aired?.from ? new Date(a.aired.from).getFullYear() : null),
+      total:    a.episodes || 0,
+      image:    a.images?.jpg?.large_image_url || a.images?.jpg?.image_url || '',
+      synopsis: a.synopsis || '',
+      genres:   (a.genres||[]).map(g=>g.name),
+      link:     a.url || '',
+    }));
+  }
+  if(src==='jikan-manga'){
+    const r = await fetch('https://api.jikan.moe/v4/manga?q='+encodeURIComponent(query)+'&limit=8&sfw');
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d = await r.json();
+    return (d.data||[]).map(a=>({
+      title:    a.title_english || a.title,
+      year:     a.published?.from ? new Date(a.published.from).getFullYear() : null,
+      total:    a.volumes || 0,                       // progression manga = tomes (volumes)
+      image:    a.images?.jpg?.large_image_url || a.images?.jpg?.image_url || '',
+      synopsis: a.synopsis || '',
+      genres:   (a.genres||[]).map(g=>g.name),
+      link:     a.url || '',
+    }));
+  }
+  if(src==='tmdb'){
+    const key = META.cfg.tmdbKey;
+    if(!key) throw new Error('NO_KEY');
+    await loadTmdbGenres(key);
+    const r = await fetch('https://api.themoviedb.org/3/search/multi?api_key='+key+'&language=fr-FR&include_adult=false&query='+encodeURIComponent(query));
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d = await r.json();
+    return (d.results||[]).filter(x=>x.media_type==='movie'||x.media_type==='tv').map(x=>{
+      const isTv = x.media_type==='tv';
+      const date = isTv ? x.first_air_date : x.release_date;
+      const gmap = isTv ? tmdbGenres.tv : tmdbGenres.movie;
+      const m = {
+        title:    isTv ? x.name : x.title,
+        year:     date ? +date.slice(0,4) : null,
+        total:    0,                                  // séries : nb d'épisodes résolu au clic (détail) ; films : pas de total
+        image:    x.poster_path ? 'https://image.tmdb.org/t/p/w500'+x.poster_path : '',
+        synopsis: x.overview || '',
+        genres:   (x.genre_ids||[]).map(id=>gmap[id]).filter(Boolean),
+        link:     'https://www.themoviedb.org/'+(isTv?'tv':'movie')+'/'+x.id,
+        kind:     isTv ? 'Série' : 'Film',
+      };
+      if(isTv) m.fetchTotal = async ()=>{
+        const dr = await fetch('https://api.themoviedb.org/3/tv/'+x.id+'?api_key='+key+'&language=fr-FR');
+        if(!dr.ok) return 0; const dd = await dr.json(); return dd.number_of_episodes||0;
+      };
+      return m;
+    });
+  }
+  if(src==='rawg'){
+    const key = META.cfg.rawgKey;
+    if(!key) throw new Error('NO_KEY');
+    const r = await fetch('https://api.rawg.io/api/games?key='+key+'&page_size=8&search='+encodeURIComponent(query));
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d = await r.json();
+    return (d.results||[]).map(g=>{
+      const m = {
+        title:    g.name,
+        year:     g.released ? +g.released.slice(0,4) : null,
+        total:    0,                                  // jeu = % (pas de total d'épisodes)
+        image:    g.background_image || '',           // RAWG : image paysage (pas de jaquette verticale)
+        synopsis: '',
+        genres:   (g.genres||[]).map(x=>x.name),
+        link:     g.slug ? 'https://rawg.io/games/'+g.slug : '',
+        kind:     'Jeu',
+      };
+      // Un seul appel de détail au clic → nombre de succès + description.
+      m.fetchDetails = async ()=>{
+        const dr = await fetch('https://api.rawg.io/api/games/'+g.id+'?key='+key);
+        if(!dr.ok) return; const dd = await dr.json();
+        m.achTotal = dd.achievements_count || 0;
+        if(dd.description_raw){ m.synopsis = dd.description_raw.slice(0,800) + (dd.description_raw.length>800?'…':''); }
+      };
+      return m;
+    });
+  }
+  if(src==='worker'){
+    // Proxy perso (Cloudflare Worker) → IGDB si configuré, sinon Steam. Voir wishtvtime-proxy.worker.js
+    let base = (META.cfg.proxyUrl||'').trim().replace(/\/+$/,'');
+    if(!base) throw new Error('NO_PROXY');
+    if(!/^https?:\/\//i.test(base)) base = 'https://'+base;   // tolère une URL collée sans « https:// »
+    const srcParam = metaGameSrc!=='auto' ? '&src='+metaGameSrc : '';   // forçage de source (test)
+    const r = await fetch(base+'/games?q='+encodeURIComponent(query)+srcParam);
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d = await r.json();
+    metaLastSource = d.source || '';                          // source réellement utilisée par le proxy
+    if(d.error) console.warn('[meta] worker :', d.error);
+    return (d.items||[]).map(g=>{
+      const m = {
+        title:    g.title,
+        year:     g.year || null, total:0,
+        image:    g.image || '', imageAlt: g.imageAlt || '',
+        synopsis: g.synopsis || '', genres: g.genres || [], achTotal: g.achTotal || 0,
+        link:     g.link || '', kind: 'Jeu',
+      };
+      // Steam : détails (année/genres/succès/synopsis) récupérés au clic via le worker.
+      if(g.detail){
+        const durl = /^https?:/.test(g.detail) ? g.detail : base + g.detail;
+        m.fetchDetails = async ()=>{
+          try{
+            const dr = await fetch(durl); if(!dr.ok) return; const dd = await dr.json();
+            if(dd.year && !m.year)      m.year = dd.year;
+            if(dd.genres?.length)       m.genres = dd.genres;
+            if(dd.achTotal)             m.achTotal = dd.achTotal;
+            if(dd.synopsis)             m.synopsis = dd.synopsis;
+          }catch(e){}
+        };
+      }
+      return m;
+    });
+  }
+  return [];
+}
+// Applique une proposition au formulaire. Ne pré-écrase pas le travail manuel
+// (titre = on prend la version officielle choisie ; le reste seulement si le champ est vide).
+async function applyMeta(m){
+  // Données différées (résolues seulement au clic, pour économiser les appels) :
+  //  - TMDB séries : nombre d'épisodes ; RAWG jeux : succès + description.
+  if(!m.total && typeof m.fetchTotal==='function'){ try{ m.total = (await m.fetchTotal())||0; }catch(e){} }
+  if(typeof m.fetchDetails==='function'){ try{ await m.fetchDetails(); }catch(e){} }
+  if(m.title) $('#fTitle').value = m.title;
+  if(m.year  && !$('#fYear').value)               $('#fYear').value = m.year;
+  if(m.total > 0 && !(+$('#fProgTotal').value))    $('#fProgTotal').value = m.total;
+  if(m.achTotal > 0 && !(+$('#fAchTotal').value))  $('#fAchTotal').value = m.achTotal;   // jeux : succès
+  if(m.link  && !$('#fLink').value.trim())         $('#fLink').value = m.link;
+  if(m.synopsis && !$('#fComment').value.trim())   $('#fComment').value = m.synopsis;
+  (m.genres||[]).forEach(g=>{ if(g && !curTags.some(x=>x.toLowerCase()===g.toLowerCase())) curTags.push(g); });
+  renderTags();
+  $('#metaResults').classList.remove('open');
+  // Jaquette : seulement si aucune image manuelle. On tente les sources dans l'ordre
+  // (ex. Steam : jaquette verticale, puis repli paysage si elle n'existe pas).
+  if(!curImage){
+    const sources = [m.image, m.imageAlt].filter(Boolean);
+    if(sources.length){
+      toast('⏳ Téléchargement de la jaquette…');
+      let done = false;
+      for(const u of sources){
+        try{ setImage(await urlToDataURL(u)); imageChanged = true; done = true; break; }catch(e){}
+      }
+      if(!done){ console.warn('[meta] jaquette non récupérée'); toast('⚠️ Jaquette non récupérée (infos OK)'); return; }
+    }
+  }
+  toast('✨ Infos appliquées');
+}
+// Lance la recherche et affiche les propositions cliquables.
+async function runMetaSearch(){
+  const q = $('#fTitle').value.trim();
+  const box = $('#metaResults');
+  if(!q){ toast('⚠️ Tape d\'abord un titre à chercher'); $('#fTitle').focus(); return; }
+  if(!navigator.onLine){ toast('📡 Hors-ligne : recherche indisponible'); return; }
+  box.classList.add('open');
+  box.innerHTML = '<div class="meta-hint">⏳ Recherche…</div>';
+  metaLastSource = '';
+  try{
+    const results = await searchMeta($('#fType').value, q);
+    if(!results.length){
+      box.innerHTML = '<div class="meta-hint">Aucun résultat trouvé'+(metaLastSource?' (source : '+metaLastSource+')':'')+'.</div>';
+      return;
+    }
+    box.innerHTML = '';
+    if(metaLastSource) box.innerHTML = '<div class="meta-hint">✅ Résultats via <b>'+metaLastSource.toUpperCase()+'</b></div>';   // source réellement utilisée (test)
+    const unit = unitOf($('#fType').value);          // « épisodes », « tomes »…
+    results.forEach(m=>{
+      const el = document.createElement('button');
+      el.type = 'button'; el.className = 'meta-item';
+      const sub = [m.kind, m.year||'—', m.total ? m.total+(unit?' '+unit:'') : ''].filter(Boolean).join(' · ');
+      el.innerHTML = `${m.image ? `<img src="${escapeHtml(m.image)}" loading="lazy" alt="">` : '<div class="mi-ph"></div>'}
+        <div class="mi-info"><div class="mi-title">${escapeHtml(m.title)}</div><div class="mi-sub">${escapeHtml(sub)}</div></div>`;
+      el.onclick = ()=>applyMeta(m);
+      box.appendChild(el);
+    });
+  }catch(e){
+    console.warn('[meta] recherche échouée :', e);
+    if(e.message==='NO_KEY'){
+      box.innerHTML = '<div class="meta-hint">🔑 Ajoute ta clé <b>TMDB</b> (gratuite) dans ⚙️ Paramètres.</div>';
+    } else if(e.message==='NO_PROXY'){
+      box.innerHTML = '<div class="meta-hint">🎮 Renseigne l\'URL de ton <b>proxy jeux</b> dans ⚙️ Paramètres (voir le fichier <code>wishtvtime-proxy.worker.js</code> pour le créer gratuitement).</div>';
+    } else {
+      box.innerHTML = '<div class="meta-hint">⚠️ Erreur réseau. Réessaie dans un instant.</div>';
+    }
+  }
+}
+
 function setAudio(data, mime){
   curAudio = data; curAudioMime = data ? (mime||'audio/webm') : null;
   $('#audioClear').style.display = data ? 'inline-flex' : 'none';
@@ -1927,6 +2239,7 @@ function openSync(){
   $('#cfgBranch').value= SYNC.cfg.branch||'main';
   $('#cfgToken').value = SYNC.cfg.token||'';
   $('#cfgAuto').checked= !!SYNC.cfg.auto;
+  META.load(); $('#cfgTmdbKey').value = META.cfg.tmdbKey||''; $('#cfgRawgKey').value = META.cfg.rawgKey||''; $('#cfgProxyUrl').value = META.cfg.proxyUrl||'';
   SYNC.status(SYNC.cfg.last? 'Dernière synchro : '+new Date(SYNC.cfg.last).toLocaleString() : '');
   updateModeUI();
   $('#syncOverlay').classList.add('open');
@@ -1939,6 +2252,7 @@ function saveSyncCfg(){
   SYNC.cfg.token = $('#cfgToken').value.trim();
   SYNC.cfg.auto  = $('#cfgAuto').checked;
   SYNC.store();
+  META.cfg.tmdbKey = $('#cfgTmdbKey').value.trim(); META.cfg.rawgKey = $('#cfgRawgKey').value.trim(); META.cfg.proxyUrl = $('#cfgProxyUrl').value.trim(); META.store();
   updateModeUI();
   toast('✅ Réglages enregistrés');
 }
@@ -1953,6 +2267,11 @@ function bind(){
   $('#saveBtn').onclick = save;
   $('#deleteBtn').onclick = removeItem;
   $('#fType').onchange = updateFormType;
+  $('#metaBtn').onclick = runMetaSearch;
+  $('#metaSrcSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    metaGameSrc = b.dataset.src;
+    $('#metaSrcSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on', x===b));
+  });
   // Empêche le « courant » de dépasser le total (succès, et progression hors jeu)
   const clampPair = (curSel, totSel)=>{ const c=$(curSel), t=+$(totSel).value; if(t>0 && +c.value>t) c.value=t; };
   $('#fProgCur').oninput   = ()=>{ if($('#fType').value!=='jeu') clampPair('#fProgCur','#fProgTotal'); };
@@ -2134,6 +2453,7 @@ function bind(){
   await THEME.loadBg();                  // image de fond (stockée en IndexedDB)
   items = await DB.all();
   loadTomb();
+  META.load();                         // clé(s) de métadonnées (TMDB…) dispo dès le départ
   render();
   // Mode de sauvegarde
   SYNC.load();
