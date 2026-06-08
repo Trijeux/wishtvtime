@@ -30,10 +30,14 @@
     --header:rgba(255,255,255,.85);
   }
   *{box-sizing:border-box;margin:0;padding:0}
+  /* Pas de défilement horizontal (mobile) : on coupe tout débordement latéral.
+     `clip` (et non `hidden`) n'introduit pas de conteneur de défilement → le
+     header en position:sticky continue de fonctionner normalement. */
+  html{overflow-x:clip}
   body{
     font-family:'Segoe UI',system-ui,sans-serif;
     background:var(--bg); color:var(--txt);
-    min-height:100vh; padding-bottom:60px;
+    min-height:100vh; padding-bottom:60px; overflow-x:clip; max-width:100%;
     background-size:100% auto; background-position:top center; background-attachment:scroll; background-repeat:repeat-y;
   }
   /* Voile de lisibilité quand un fond d'écran est défini */
