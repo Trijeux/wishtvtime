@@ -1602,6 +1602,101 @@ const UMBREON_PREVIEW = [
   ['ClimbCeiling','Walk Climb (plafond)'], ['Pinched','Grab By Mouse'], ['Resisting','Grab (gigote)'],
   ['Wink',"Clin d'œil"], ['Kick','Kick'], ['ShowBottom','Show Bottom'],
 ];
+// ---- Eevee (sprites tous 128×128) ----
+const EEVEE_ANIMS = {
+  Stand:    [[_U('Idel Fram 1',0,0,40), _U('Idel Fram 2',0,0,40), _U('Idel Fram 3',0,0,40), _U('Idel Fram 4',0,0,40)]],
+  Walk:     [[_U('Walk Fram 1',-2,0,8), _U('Walk Fram 2',-2,0,8)]],
+  Run:      [[_U('Run Fram 1',-5,0,4), _U('Run Fram 2',-5,0,4), _U('Run Fram 3',-5,0,4), _U('Run Fram 4',-5,0,4), _U('Run Fram 5',-5,0,4), _U('Run Fram 6',-5,0,4)]],
+  Sit:      [[_U('SIte Fram 1',0,0,30), _U('SIte Fram 2',0,0,30)]],
+  Sprawl:   [[_U('Sleep Fram 1',0,0,30), _U('Sleep Fram 2',0,0,30)]],
+  Jumping:  [[_U('Jump',0,0,250)]],
+  Falling:  [[_U('Fall',0,0,250)]],
+  Bouncing: [[_U('Bouncing Fram 1',0,0,4), _U('Bouncing Fram 2',0,0,4)]],
+  ClimbWall:    [[_U('Walk Wall and Climb Fram 1',0,0,8), _U('Walk Wall and Climb Fram 2',0,0,8)]],
+  GrabWall:     [[_U('Walk Wall and Climb Fram 1',0,0,250)]],
+  ClimbCeiling: [[_U('Walk Wall and Climb Fram 1',0,0,8), _U('Walk Wall and Climb Fram 2',0,0,8)]],
+  GrabCeiling:  [[_U('Walk Wall and Climb Fram 1',0,0,250)]],
+  Pinched:  [[_U('Grab Fram 1-5',0,0,8)]],
+  Resisting:[[_U('Grab Fram 6',0,0,6), _U('Grab Fram 7',0,0,6)]],
+};
+const EEVEE_PREVIEW = [
+  ['Stand','Idle'], ['Walk','Walk'], ['Run','Run'], ['Sit','Sit'], ['Sprawl','Sleep'],
+  ['Jumping','Jump'], ['Falling','Fall'], ['Bouncing','Bouncing'], ['ClimbWall','Walk Wall & Climb'],
+  ['Pinched','Grab'], ['Resisting','Grab (gigote)'],
+];
+// ---- Cyndaquil (sprites tous 128×128) ----
+const CYNDAQUIL_ANIMS = {
+  Stand:    [[_U('Idel',0,0,250)]],
+  Walk:     [[_U('Walk Fram 1',-2,0,8), _U('Walk Fram 2',-2,0,8)]],
+  Run:      [[_U('Run Fram 1',-5,0,4), _U('Run Fram 2',-5,0,4), _U('Run Fram 3',-5,0,4), _U('Run Fram 4',-5,0,4)]],
+  Dash:     [[_U('Dash Fram 1',-9,0,3), _U('Dash Fram 2',-9,0,3), _U('Dash Fram 3',-9,0,3)]],
+  EndDash:  [[_U('End Dash Fram 1',0,0,5), _U('End Dash Fram 2',0,0,5), _U('End Dash Fram 3',0,0,5), _U('End Dash Fram 4',0,0,5), _U('End Dash Fram 5',0,0,5)]],
+  Sit:      [[_U('Sit',0,0,250)]],
+  Sprawl:   [[_U('Sleep Fram 1',0,0,30), _U('Sleep Fram 2',0,0,30), _U('Sleep Fram 3',0,0,30)]],
+  Jumping:  [[_U('Jump',0,0,250)]],
+  Falling:  [[_U('Fall Fram 1',0,0,8), _U('Fall Fram 2',0,0,8)]],
+  Bouncing: [[_U('Bouncing',0,0,8)]],
+  Eternument:[[_U('Eternument Fram 1',0,0,8), _U('Eternument Fram 2',0,0,8), _U('Eternument Fram 3',0,0,8), _U('Eternument Fram 4',0,0,8), _U('Eternument Fram 5',0,0,8)]],
+  ClimbWall:    [[_U('Walk Wall fram 1',0,0,8), _U('Walk Wall fram 2',0,0,8), _U('Walk Wall fram 3',0,0,8)]],
+  GrabWall:     [[_U('Walk Wall fram 1',0,0,250)]],
+  ClimbCeiling: [[_U('Walk Climb Fram 1',0,0,8), _U('Walk Climb Fram 2',0,0,8), _U('Walk Climb Fram 3',0,0,8)]],
+  GrabCeiling:  [[_U('Walk Climb Fram 1',0,0,250)]],
+  Pinched:  [[_U('Grab Fram 1-5',0,0,8)]],
+  Resisting:[[_U('Grab Fram 6',0,0,6), _U('Grab Fram 7',0,0,6)]],
+};
+const CYNDAQUIL_PREVIEW = [
+  ['Stand','Idle'], ['Walk','Walk'], ['Run','Run'], ['Dash','Dash'], ['EndDash','End Dash'],
+  ['Sit','Sit'], ['Sprawl','Sleep'], ['Jumping','Jump'], ['Falling','Fall'], ['Bouncing','Bouncing'],
+  ['Eternument','Éternuement'], ['ClimbWall','Walk Wall'], ['ClimbCeiling','Walk Climb'],
+  ['Pinched','Grab'], ['Resisting','Grab (gigote)'],
+];
+// ---- Buizel (Dance/Dash/Run/Sleep larges → ancre centrée) ----
+const BUIZEL_ANIMS = {
+  Stand:    [[_U('Idel',0,0,250)]],
+  Walk:     [[_U('Walk Fram 1',-2,0,8), _U('Walk Fram 2',-2,0,8)]],
+  Run:      [[_U('Run Fram 1',-5,0,4,79,128,158,128), _U('Run Fram 2',-5,0,4,79,128,158,128), _U('Run Fram 3',-5,0,4,79,128,158,128), _U('Run Fram 4',-5,0,4,79,128,158,128)]],
+  Dash:     [[_U('Dash Fram 1',-9,0,3,95,128,190,128), _U('Dash Fram 2',-9,0,3,95,128,190,128), _U('Dash Fram 3',-9,0,3,95,128,190,128), _U('Dash Fram 4',-9,0,3,95,128,190,128)]],
+  Sit:      [[_U('Sit Fram 1',0,0,18), _U('Sit Fram 2',0,0,18), _U('Sit Fram 3',0,0,18), _U('Sit Fram 4',0,0,18), _U('Sit Fram 5',0,0,18), _U('Sit Fram 6',0,0,18), _U('Sit Fram 7',0,0,18), _U('Sit Fram 8',0,0,18)]],
+  Sprawl:   [[_U('Sleep Fram 1',0,0,26,95,128,190,128), _U('Sleep Fram 2',0,0,26,95,128,190,128), _U('Sleep Fram 3',0,0,26,95,128,190,128), _U('Sleep Fram 4',0,0,26,95,128,190,128), _U('Sleep Fram 5',0,0,26,95,128,190,128), _U('Sleep Fram 6',0,0,26,95,128,190,128)]],
+  Jumping:  [[_U('Jump Fram 1',0,0,12), _U('Jump Fram 2',0,0,250)]],
+  Falling:  [[_U('Walk Wall and Climb and Fall Fram 1',0,0,8), _U('Walk Wall and Climb and Fall Fram 2',0,0,8)]],
+  Bouncing: [[_U('DownToUp After Bouncing Fram 1',0,0,6), _U('DownToUp After Bouncing Fram 2',0,0,6), _U('DownToUp After Bouncing Fram 3',0,0,6), _U('DownToUp After Bouncing Fram 4',0,0,6), _U('DownToUp After Bouncing Fram 5',0,0,6)]],
+  Dance:    [[_U('Dance Fram 1',0,0,8,101,128,202,128), _U('Dance Fram 2',0,0,8,101,128,202,128), _U('Dance Fram 3',0,0,8,101,128,202,128), _U('Dance Fram 4',0,0,8,101,128,202,128), _U('Dance Fram 5',0,0,8,101,128,202,128), _U('Dance Fram 6',0,0,8,101,128,202,128), _U('Dance Fram 7',0,0,8,101,128,202,128), _U('Dance Fram 8',0,0,8,101,128,202,128)]],
+  ClimbWall:    [[_U('Walk Wall and Climb and Fall Fram 1',0,0,8), _U('Walk Wall and Climb and Fall Fram 2',0,0,8)]],
+  GrabWall:     [[_U('Walk Wall and Climb and Fall Fram 1',0,0,250)]],
+  ClimbCeiling: [[_U('Walk Wall and Climb and Fall Fram 1',0,0,8), _U('Walk Wall and Climb and Fall Fram 2',0,0,8)]],
+  GrabCeiling:  [[_U('Walk Wall and Climb and Fall Fram 1',0,0,250)]],
+  Pinched:  [[_U('Grab Fram 1-5',0,0,8)]],
+  Resisting:[[_U('Grab Fram 6',0,0,6), _U('Grab Fram 7',0,0,6)]],
+};
+const BUIZEL_PREVIEW = [
+  ['Stand','Idle'], ['Walk','Walk'], ['Run','Run'], ['Dash','Dash'], ['Sit','Sit'], ['Sprawl','Sleep'],
+  ['Jumping','Jump'], ['Falling','Walk Wall/Climb/Fall'], ['Bouncing','DownToUp'], ['Dance','Dance'],
+  ['Pinched','Grab'], ['Resisting','Grab (gigote)'],
+];
+// ---- Gardevoir (beaucoup de sprites non carrés : larges et hauts) ----
+const GARDEVOIR_ANIMS = {
+  Stand:    [[_U('Idel and Dance Fram 1',0,0,250,87,128,175,128)]],
+  Walk:     [[_U('Walk Fram 1',-2,0,9), _U('Walk Fram 2',-2,0,9), _U('Walk Fram 3',-2,0,9)]],
+  Sit:      [[_U('Sit Fram 1',0,0,30), _U('Sit Fram 2',0,0,30)]],
+  Sprawl:   [[_U('Sleep Fram 1',0,0,30,90,128,180,128), _U('Sleep Fram 2',0,0,30,90,128,180,128), _U('Sleep Fram 3',0,0,30,90,128,180,128), _U('Sleep Fram 4',0,0,30,90,128,180,128)]],
+  Sleep2:   [[_U('Sleep2 Fram 1',0,0,18,90,136,180,136), _U('Sleep2 Fram 2',0,0,18,90,136,180,136), _U('Sleep2 Fram 3',0,0,18,90,136,180,136), _U('Sleep2 Fram 4',0,0,18,90,136,180,136), _U('Sleep2 Fram 5',0,0,18,90,136,180,136), _U('Sleep2 Fram 6',0,0,18,90,136,180,136), _U('Sleep2 Fram 7',0,0,18,90,136,180,136), _U('Sleep2 Fram 8',0,0,18,90,136,180,136), _U('Sleep2 Fram 9',0,0,18,90,136,180,136)]],
+  Jumping:  [[_U('Jump',0,0,250,64,149,128,149)]],
+  Falling:  [[_U('Grab Fram 7 and Fall',0,0,250,64,173,128,173)]],
+  Bouncing: [[_U('DownToUp After Bouncing 1',0,0,6,88,137,176,137), _U('DownToUp After Bouncing 2',0,0,6,88,137,176,137), _U('DownToUp After Bouncing 3',0,0,6,88,137,176,137), _U('DownToUp After Bouncing 4',0,0,6,88,137,176,137)]],
+  Dance:    [[_U('Idel and Dance Fram 1',0,0,8,87,128,175,128), _U('Dance Fram 2',0,0,8,87,128,175,128), _U('Dance Fram 3',0,0,8,87,128,175,128), _U('Dance Fram 4',0,0,8,87,128,175,128), _U('Dance Fram 5',0,0,8,87,128,175,128), _U('Dance Fram 6',0,0,8,87,128,175,128), _U('Dance Fram 7',0,0,8,87,128,175,128), _U('Dance Fram 8',0,0,8,87,128,175,128), _U('Dance Fram 9',0,0,8,87,128,175,128), _U('Dance Fram 10',0,0,8,87,128,175,128), _U('Dance Fram 11',0,0,8,87,128,175,128), _U('Dance Fram 12',0,0,8,87,128,175,128), _U('Dance Fram 13',0,0,8,87,128,175,128)]],
+  ClimbWall:    [[_U('Walk Wall and Climb Fram 1',0,0,8,64,139,128,139), _U('Walk Wall and Climb Fram 2',0,0,8,64,139,128,139), _U('Walk Wall and Climb Fram 3',0,0,8,64,139,128,139)]],
+  GrabWall:     [[_U('Walk Wall and Climb Fram 1',0,0,250,64,139,128,139)]],
+  ClimbCeiling: [[_U('Walk Wall and Climb Fram 1',0,0,8,64,139,128,139), _U('Walk Wall and Climb Fram 2',0,0,8,64,139,128,139), _U('Walk Wall and Climb Fram 3',0,0,8,64,139,128,139)]],
+  GrabCeiling:  [[_U('Walk Wall and Climb Fram 1',0,0,250,64,139,128,139)]],
+  Pinched:  [[_U('Grab Fram 1-5',0,0,8,64,173,128,173)]],
+  Resisting:[[_U('Grab Fram 6',0,0,6,64,173,128,173), _U('Grab Fram 7 and Fall',0,0,6,64,173,128,173)]],
+};
+const GARDEVOIR_PREVIEW = [
+  ['Stand','Idle'], ['Walk','Walk'], ['Sit','Sit'], ['Sprawl','Sleep'], ['Sleep2','Sleep 2'],
+  ['Jumping','Jump'], ['Falling','Fall'], ['Bouncing','DownToUp'], ['Dance','Dance'],
+  ['ClimbWall','Walk Wall & Climb'], ['Pinched','Grab'], ['Resisting','Grab (gigote)'],
+];
 // Mascottes / compagnons de bureau débloquées par niveau (se baladent en bas de l'écran, synchronisées via PROFILE).
 const MASCOTS = [
   {id:'none',   name:'Aucune',  lvl:1,  emoji:''},
@@ -1609,7 +1704,16 @@ const MASCOTS = [
   {id:'shimeji', name:'Umbreon', lvl:10, emoji:'🌙', icon:'mascots/umbreon/normal/icon.png', shimeji:{img:'mascots/umbreon/normal/', anims:UMBREON_ANIMS, preview:UMBREON_PREVIEW},
     // Modèles alternatifs (mêmes animations, dossier de sprites différent) : bouton « modèle » pour basculer.
     skins:[ {name:'Normal', img:'mascots/umbreon/normal/'}, {name:'✨ Shiny', img:'mascots/umbreon/shiny/'} ]},
+  // Persos sans mode Shiny — niveaux provisoires, à rééquilibrer.
+  {id:'eevee',     name:'Eevee',     lvl:5,  emoji:'🦊', icon:'mascots/Eevee/icon.png',     shimeji:{img:'mascots/Eevee/',     anims:EEVEE_ANIMS,     preview:EEVEE_PREVIEW}},
+  {id:'cyndaquil', name:'Cyndaquil', lvl:8,  emoji:'🔥', icon:'mascots/Cyndaquil/icon.png', shimeji:{img:'mascots/Cyndaquil/', anims:CYNDAQUIL_ANIMS, preview:CYNDAQUIL_PREVIEW}},
+  {id:'buizel',    name:'Buizel',    lvl:15, emoji:'💧', icon:'mascots/Buizel/icon.png',    shimeji:{img:'mascots/Buizel/',    anims:BUIZEL_ANIMS,    preview:BUIZEL_PREVIEW}},
+  {id:'gardevoir', name:'Gardevoir', lvl:25, emoji:'💃', icon:'mascots/Gardevoir/icon.png', shimeji:{img:'mascots/Gardevoir/', anims:GARDEVOIR_ANIMS,  preview:GARDEVOIR_PREVIEW}},
 ];
+// 🔧 Interrupteur de l'outil Dev. false = outil DÉSACTIVÉ (bouton masqué + effets ignorés), code conservé.
+// Repasser à true pour réactiver (force le niveau, panneau debug Shimeji, déblocages de test).
+const DEV_ENABLED = false;
+function mcDev(){ return DEV_ENABLED ? localStorage.getItem('mc_devlvl') : null; }   // source unique : niveau dev forcé, ou null si l'outil est désactivé
 // Barème XP + niveau (passer au niv. suivant coûte 100×niveau ; cumul pour atteindre L = 50·L·(L-1)).
 function computeXP(){
   let xp = 0;
@@ -1621,7 +1725,7 @@ function computeXP(){
   });
   const level = Math.max(1, Math.floor((1 + Math.sqrt(1 + xp/12.5)) / 2));
   const cur = 50*level*(level-1), next = 50*(level+1)*level;
-  const dev = +localStorage.getItem('mc_devlvl') || 0;   // mode dev (toggle) : force le niveau pour tester les déblocages — n'altère PAS le vrai XP
+  const dev = +mcDev() || 0;   // mode dev (toggle) : force le niveau pour tester les déblocages — n'altère PAS le vrai XP
   if(dev>0) return { xp, level:dev, into:0, need:100*dev, dev:true };
   return { xp, level, into: xp-cur, need: next-cur };
 }
@@ -1677,7 +1781,7 @@ function checkBadges(){
 }
 // Effet « level up » : confettis + toast quand le niveau augmente (silencieux au 1er lancement / en mode dev).
 function checkLevelUp(){
-  if(localStorage.getItem('mc_devlvl')) return;        // pas de level-up pendant que le mode dev est actif
+  if(mcDev()) return;        // pas de level-up pendant que le mode dev est actif
   const lvl = computeXP().level;
   let last; try{ last = JSON.parse(localStorage.getItem('mc_lastlvl')||'null'); }catch(e){ last=null; }
   localStorage.setItem('mc_lastlvl', String(lvl));
@@ -2906,7 +3010,7 @@ const SHIMEJI = {
     else { await this.loadActions(cfg.conf); if(token!==this._token) return; }   // sinon : parse actions.xml au runtime (packs Shimeji standard)
     if(!Object.keys(this.anims).length){ this.pack=null; return; }   // échec de chargement → on abandonne
     this.preload(); this.build();
-    if(localStorage.getItem('mc_devlvl')) this.buildDebug();   // panneau de debug : en mode dev seulement (conservé pour brancher les prochaines mascottes)
+    if(mcDev()) this.buildDebug();   // panneau de debug : en mode dev seulement (conservé pour brancher les prochaines mascottes)
     this.x = innerWidth*0.5; this.y = innerHeight; this.vx=0; this.vy=0;
     this.dir = Math.random()<0.5 ? -1 : 1;
     this.toStand();
@@ -2963,21 +3067,31 @@ const SHIMEJI = {
   toStand(){ this.state='stand'; this.anyAnim('Stand','Walk'); this.beh=40+(Math.random()*70|0); this.vx=0; this.vy=0; this.y=innerHeight; },
   pick(){
     const r=Math.random();
-    if(r<0.22) this.startWalk('Walk', false);
-    else if(r<0.34) this.startWalk('Run', false);
-    else if(r<0.42 && this.anims.Creep) this.startCreep();         // rampe (si le pack a Creep)
-    else if(r<0.56) this.standIdle();                             // animation sur place (Clin d'œil / Kick / Show Bottom…)
+    if(r<0.20) this.startWalk('Walk', false);
+    else if(r<0.31) this.startWalk('Run', false);
+    else if(r<0.39 && this.anims.Dash) this.startDash();           // sprint (si le pack a Dash)
+    else if(r<0.45 && this.anims.Creep) this.startCreep();         // rampe (si le pack a Creep)
+    else if(r<0.57) this.standIdle();                             // animation sur place (Clin d'œil / Kick / Dance / Éternuement…)
     else if(r<0.72) this.startSit();                              // assis (+ sous-animations)
-    else if(r<0.82){ this.state='lie'; this.anyAnim('Sprawl','Sit','Stand'); this.beh=80+(Math.random()*140|0); }   // dort
+    else if(r<0.82) this.startLie();                             // dort (Sprawl ou Sleep2)
     else if(r<0.90 && this.anims.Jumping) this.startJump();        // petit saut
     else this.startWalk('Walk', true);                            // marche vers un mur puis grimpe (et parfois jusqu'au plafond)
   },
   // Animation « sur place » ponctuelle, choisie parmi les bonus disponibles du perso, puis retour debout.
   standIdle(){
-    const opts=['Wink','Kick','ShowBottom'].filter(n=>this.anims[n]);
+    const opts=['Wink','Kick','ShowBottom','Dance','Eternument'].filter(n=>this.anims[n]);
     if(!opts.length){ this.toStand(); return; }
     this.playOnce(opts[Math.random()*opts.length|0], this.toStand);
   },
+  startLie(){ const a=(this.anims.Sleep2 && Math.random()<0.5)?'Sleep2':'Sprawl'; this.state='lie'; this.anyAnim(a,'Sprawl','Sit','Stand'); this.beh=80+(Math.random()*140|0); },
+  // Sprint : comme la course mais plus rapide, avec un freinage « End Dash » à l'arrivée si dispo.
+  startDash(){
+    this.state='dash'; this.thenClimb=false;
+    this.targetX = this.margin()+Math.random()*(innerWidth-2*this.margin());
+    this.dir = this.targetX<this.x?-1:1;
+    this.anyAnim('Dash','Run','Walk','Stand'); this.beh=250;
+  },
+  endDash(){ if(this.anims.EndDash) this.playOnce('EndDash', this.toStand); else this.toStand(); },
   // Joue une animation une seule fois puis exécute `then` (sinon retombe debout). Pour les gestes ponctuels.
   playOnce(name, then){ if(!this.setAnim(name)){ (then||this.toStand).call(this); return; } this.state='oneshot'; this._then=then; },
   startCreep(){
@@ -3056,6 +3170,15 @@ const SHIMEJI = {
         if(--this.beh<=0) this.toStand();
         break;
       }
+      case 'dash': {                                    // sprint rapide, freinage End Dash à l'arrivée
+        this.stepFrame(true); const mg=this.margin();
+        if(this.x<=mg){ this.x=mg; this.endDash(); break; }
+        else if(this.x>=vw-mg){ this.x=vw-mg; this.endDash(); break; }
+        else if(Math.abs(this.x-this.targetX)<=5){ this.endDash(); break; }
+        if(this.y<vh) this.y=vh;
+        if(--this.beh<=0) this.endDash();
+        break;
+      }
       case 'climb':
         this.stepFrame(false); this.y -= 1.6;
         if(this.y<=this.climbY){
@@ -3085,8 +3208,8 @@ const SHIMEJI = {
         if(this.y>=vh){ this.y=vh; if(this.vy>6 && this.anims.Bouncing){ this.state='bounce'; this.setAnim('Bouncing'); } else this.toStand(); }
         break;
       }
-      case 'bounce':
-        if(this.stepFrame(false)) this.toStand(); break;
+      case 'bounce':                                    // fin du rebond → relevé « DownToUp » si dispo, sinon debout
+        if(this.stepFrame(false)){ if(this.anims.GetUp) this.playOnce('GetUp', this.toStand); else this.toStand(); } break;
       case 'preview':                                   // debug : joue l'anim choisie en boucle, sur place
         this.stepFrame(false); break;
     }
@@ -3109,6 +3232,7 @@ const SHIMEJI = {
     const old=document.getElementById('shimejiDbg'); if(old) old.remove();
     // Comportements : base + entrées conditionnelles selon les animations réellement présentes dans le pack.
     const beh=[['auto','▶ Auto','sd-auto'],['stand','Debout'],['walk','Marche'],['run','Course']];
+    if(this.anims.Dash) beh.push(['dash','Sprint']);
     if(this.anims.Creep) beh.push(['creep','Rampe']);
     beh.push(['sit','Assis'],['lie','Allongé'],['jump','Saut']);
     if(this.anims.Tripping) beh.push(['trip','Trébuche']);
@@ -3116,6 +3240,8 @@ const SHIMEJI = {
     if(this.anims.Wink) beh.push(['wink',"Clin d'œil"]);
     if(this.anims.Kick) beh.push(['kick','Kick']);
     if(this.anims.ShowBottom) beh.push(['showbottom','Show Bottom']);
+    if(this.anims.Dance) beh.push(['dance','Dance']);
+    if(this.anims.Eternument) beh.push(['sneeze','Éternuement']);
     // Aperçu d'animations : liste curée du pack si fournie, sinon toutes les clés.
     const anims = this.previewAnims || Object.keys(this.anims).sort().map(n=>[n,n]);
     const p=document.createElement('div'); p.id='shimejiDbg';
@@ -3139,9 +3265,12 @@ const SHIMEJI = {
     else if(b==='sit'){ this.state='sit'; this.anyAnim('Sit','Stand'); this.beh=1e9; }
     else if(b==='lie'){ this.state='lie'; this.anyAnim('Sprawl','Sit','Stand'); this.beh=1e9; }
     else if(b==='jump') this.startJump();
+    else if(b==='dash') this.startDash();
     else if(b==='wink'){ this.y=innerHeight; this.playOnce('Wink', this.toStand); }
     else if(b==='kick'){ this.y=innerHeight; this.playOnce('Kick', this.toStand); }
     else if(b==='showbottom'){ this.y=innerHeight; this.playOnce('ShowBottom', this.toStand); }
+    else if(b==='dance'){ this.y=innerHeight; this.playOnce('Dance', this.toStand); }
+    else if(b==='sneeze'){ this.y=innerHeight; this.playOnce('Eternument', this.toStand); }
     else if(b==='trip'){ this.x=innerWidth*0.5; this.y=innerHeight; this.playOnce('Tripping', this.toStand); }
     else if(b==='climb'){ this.x=this.margin(); this.y=innerHeight; this.beginClimb(-1); this.toCeiling=false; this.climbY=innerHeight*0.3; this.beh=1e9; }
     else if(b==='ceiling'){ this.x=innerWidth*0.5; this.startCeilWalk(); }
@@ -3351,7 +3480,7 @@ function openStats(){
 
   // 🐾 Mascotte / compagnon de bureau (se balade en bas de l'écran, débloquée par niveau)
   h.push(`<div class="stat-h">🐾 Mascotte</div>
-    <div class="frames-grid">${MASCOTS.filter(p=>!p.dev || localStorage.getItem('mc_devlvl')).map(p=>{
+    <div class="frames-grid">${MASCOTS.filter(p=>!p.dev || mcDev()).map(p=>{
       const ok = lvlNow>=p.lvl, sel = (PROFILE.cfg.mascot||'none')===p.id;
       const prev = p.icon ? `<img src="${p.icon}" alt="">` : (p.emoji||'∅');
       return `<button class="frame-it${ok?'':' locked'}${sel?' sel':''}" data-mascot="${p.id}"${ok?'':' disabled'}>
@@ -3411,12 +3540,14 @@ function openStats(){
   const topPlat = Object.entries(platCount).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([p,c])=>({label:escapeHtml(p), n:c}));
   if(topPlat.length) h.push(`<div class="stat-h">Top plateformes</div>${bars(topPlat)}`);
 
-  // 🔧 Outil dev (toggle protégé par mot de passe) : force le niveau pour tester les déblocages
-  const devOn = !!localStorage.getItem('mc_devlvl'), devLvl = +localStorage.getItem('mc_devlvl')||0;
-  h.push(`<div class="dev-row">
-    <button class="dev-btn${devOn?' on':''}" id="devBtn">🔧 Dev : ${devOn?'ON':'OFF'}</button>
-    ${devOn?`<label class="dev-set">Niveau <input type="number" id="devLvl" min="1" max="99" value="${devLvl}"></label>`:''}
-  </div>`);
+  // 🔧 Outil dev (toggle protégé par mot de passe) : force le niveau pour tester les déblocages. Masqué si DEV_ENABLED=false.
+  if(DEV_ENABLED){
+    const devOn = !!localStorage.getItem('mc_devlvl'), devLvl = +localStorage.getItem('mc_devlvl')||0;
+    h.push(`<div class="dev-row">
+      <button class="dev-btn${devOn?' on':''}" id="devBtn">🔧 Dev : ${devOn?'ON':'OFF'}</button>
+      ${devOn?`<label class="dev-set">Niveau <input type="number" id="devLvl" min="1" max="99" value="${devLvl}"></label>`:''}
+    </div>`);
+  }
 
   $('#statsBody').innerHTML = h.join('');
   wireProfile();
