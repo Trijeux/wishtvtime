@@ -42,6 +42,20 @@
   }
   /* Voile de lisibilité quand un fond d'écran est défini */
   body.has-bg::before{ content:''; position:fixed; inset:0; background:var(--bg); opacity:.80; z-index:-1; }
+  /* Fond vidéo : voile plus léger pour qu'on voie bien l'animation (les cartes restent lisibles, elles sont opaques) */
+  body.bg-video::before{ opacity:.5; }
+  /* Fond vidéo animé (MoeWalls compressés) */
+  #bgVideo{ position:fixed; inset:0; width:100%; height:100%; object-fit:cover; z-index:-2; display:none; }
+  /* Grilles de fonds / thèmes débloquables */
+  .bg-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(96px,1fr)); gap:10px; }
+  .bg-it{ position:relative; border:2px solid var(--line); border-radius:10px; overflow:hidden; cursor:pointer;
+    height:60px; background:var(--card); color:var(--txt); padding:0; }
+  .bg-it .bg-prev{ position:absolute; inset:0; }
+  .bg-it .bg-name{ position:absolute; left:0; right:0; bottom:0; font-size:10px; font-weight:700; padding:3px 4px;
+    background:rgba(0,0,0,.55); color:#fff; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .bg-it.sel{ border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+  .bg-it.locked{ opacity:.45; filter:grayscale(.5); cursor:not-allowed; }
+  .bg-it.locked .bg-lock{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:18px; }
   /* ---------- Header ---------- */
   header{
     position:sticky; top:0; z-index:30;
@@ -308,7 +322,7 @@
     border-radius:10px; padding:1px 7px; box-shadow:0 2px 6px rgba(0,0,0,.3)}
   /* Widget profil dans le header */
   .header-profile{display:inline-flex; align-items:center; gap:7px; padding:5px 11px 5px 5px}
-  .hp-avatar{width:30px; height:30px; border-radius:50%; overflow:hidden; background:var(--bg2);
+  .hp-avatar{width:30px; height:30px; border-radius:50%; overflow:hidden; background:var(--bg2); border:2px solid transparent;
     display:flex; align-items:center; justify-content:center; font-size:16px; flex:0 0 auto}
   .hp-avatar img{width:100%; height:100%; object-fit:cover}
   .hp-text{display:flex; flex-direction:column; align-items:flex-start; line-height:1.15; min-width:0}
@@ -323,6 +337,25 @@
   .level-bar{height:10px; background:rgba(0,0,0,.28); border-radius:6px; overflow:hidden}
   .level-bar i{display:block; height:100%; background:#fff; border-radius:6px; transition:width .4s}
   .level-sub{font-size:11px; opacity:.92; margin:6px 2px 0}
+  /* Bannière animée (vidéo) — header + carte profil */
+  header{overflow:hidden}
+  .banner-vid{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:0; display:none; border:0; pointer-events:none}
+  header.has-banner .banner-vid, .profile-box.has-banner .banner-vid{display:block}
+  header.has-banner::after{content:''; position:absolute; inset:0; z-index:0; background:linear-gradient(rgba(8,10,16,.5),rgba(8,10,16,.74)); pointer-events:none}
+  header > .head-row, header > .filters{position:relative; z-index:1}
+  .profile-box{position:relative; overflow:hidden}
+  .profile-box.has-banner::after{content:''; position:absolute; inset:0; z-index:0; background:linear-gradient(rgba(0,0,0,.4),rgba(0,0,0,.56)); pointer-events:none}
+  .profile-box > *:not(.banner-vid){position:relative; z-index:1}
+  /* Effet de bandeau profil selon le rang (auto par niveau) */
+  .profile-box{background-position:center; background-size:cover}
+  .profile-box.rank-shine{box-shadow:inset 0 0 34px rgba(255,255,255,.14)}
+  .profile-box.rank-border{box-shadow:0 0 0 2px rgba(255,255,255,.45), inset 0 0 34px rgba(255,255,255,.14)}
+  .profile-box.rank-shimmer{box-shadow:0 0 16px rgba(255,255,255,.4), 0 0 0 2px rgba(255,255,255,.6)}
+  .profile-box.rank-gold{box-shadow:0 0 20px rgba(255,215,0,.6), 0 0 0 2px #ffd700; animation:goldpulse 3s ease-in-out infinite}
+  @keyframes goldpulse{0%,100%{box-shadow:0 0 14px rgba(255,215,0,.45), 0 0 0 2px #ffd700}50%{box-shadow:0 0 26px rgba(255,215,0,.8), 0 0 0 2px #ffe55c}}
+  /* Confettis (effet « level up ») */
+  .confetti{position:fixed; top:-14px; width:9px; height:14px; z-index:200; border-radius:2px; pointer-events:none; animation:confetti-fall 2.4s linear forwards}
+  @keyframes confetti-fall{to{transform:translateY(106vh) rotate(720deg); opacity:.6}}
   /* Badges / succès */
   .badges-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(82px,1fr)); gap:10px; margin-top:8px}
   .badge-it{background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 6px; text-align:center}
@@ -340,6 +373,77 @@
   .rnd-info{flex:1; min-width:0}
   .rnd-title{font-size:17px; font-weight:800; margin-top:6px; overflow-wrap:anywhere}
   .rnd-actions{display:flex; gap:10px; justify-content:center; margin-top:14px; flex-wrap:wrap}
+  /* Récompenses : cadres d'avatar (appliqués à .pp-img, .hp-avatar, .frame-av) */
+  .av-bronze{border-color:#cd7f32 !important}
+  .av-silver{border-color:#cdd2da !important}
+  .av-gold{border-color:#ffd700 !important; box-shadow:0 0 8px #ffd70077}
+  .av-emerald{border-color:#2ecc71 !important; box-shadow:0 0 8px #2ecc7177}
+  .av-sapphire{border-color:#4aa3ff !important; box-shadow:0 0 8px #4aa3ff77}
+  .av-ruby{border-color:#ff5c8a !important; box-shadow:0 0 9px #ff5c8a88}
+  .av-rainbow{border-color:#fff !important; animation:rainbowring 4s linear infinite}
+  @keyframes rainbowring{0%{box-shadow:0 0 11px #ff5c8a}25%{box-shadow:0 0 11px #ffb454}50%{box-shadow:0 0 11px #4dd4ac}75%{box-shadow:0 0 11px #5b8def}100%{box-shadow:0 0 11px #ff5c8a}}
+  .frames-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(74px,1fr)); gap:10px; margin-top:8px}
+  .frame-it{background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 4px; cursor:pointer;
+    color:var(--txt); display:flex; flex-direction:column; align-items:center; gap:6px}
+  .frame-it.locked{opacity:.4; cursor:not-allowed}
+  .frame-it.sel{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent)}
+  .frame-av{width:42px; height:42px; border-radius:50%; background:var(--bg2); border:3px solid rgba(255,255,255,.4);
+    display:flex; align-items:center; justify-content:center; font-size:18px}
+  .frame-lbl{font-size:10px; color:var(--txt-dim); line-height:1.2; text-align:center}
+  /* Récompense : pseudo animé (appliqué à .profile-name, #hpName, .namefx-prev) */
+  .name-fx-grad, .name-fx-shimmer, .name-fx-gold, .name-fx-flame{
+    -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent;
+    background-size:200% auto; caret-color:#fff}
+  .name-fx-grad{background-image:linear-gradient(90deg,#ff2d6e,#ff9e2c,#22e0a1,#3d7bff,#b14dff,#ff2d6e); animation:nameGrad 4s linear infinite; filter:drop-shadow(0 0 7px rgba(255,255,255,.45))}
+  .name-fx-shimmer{background-image:linear-gradient(90deg,#fff 10%,#4fc3ff 30%,#fff 50%,#4fc3ff 70%,#fff 90%); animation:nameGrad 2.3s linear infinite; filter:drop-shadow(0 0 7px rgba(110,200,255,.7))}
+  .name-fx-gold{background-image:linear-gradient(90deg,#9c6212,#fff3b0,#ffd34d,#fff3b0,#9c6212); animation:nameGrad 2.8s linear infinite; filter:drop-shadow(0 0 8px rgba(255,200,40,.65))}
+  .name-fx-flame{background-image:linear-gradient(90deg,#ff1e00,#ff6a00,#ffd000,#ff6a00,#ff1e00); animation:nameGrad 2.2s linear infinite; filter:drop-shadow(0 0 8px rgba(255,90,0,.7))}
+  @keyframes nameGrad{to{background-position:200% center}}
+  .namefx-prev{font-size:18px; font-weight:800; line-height:42px; height:42px; display:flex; align-items:center; justify-content:center; color:var(--txt)}
+  /* Récompense : particules d'ambiance (couche flottante sur toute la page) */
+  #particleLayer{position:fixed; inset:0; z-index:20; pointer-events:none; overflow:hidden}
+  .pcl{position:absolute; top:-8%; opacity:.8; line-height:1; will-change:transform; user-select:none}
+  .pcl-fall{animation:pclFall linear infinite}
+  @keyframes pclFall{from{transform:translate(0,-10vh) rotate(0)}to{transform:translate(var(--dx,20px),112vh) rotate(var(--rot,360deg))}}
+  .pcl-rise{top:auto; bottom:-8%}
+  .pcl-rise{animation:pclRise linear infinite}
+  @keyframes pclRise{0%{transform:translate(0,0) rotate(0); opacity:0}12%{opacity:.85}100%{transform:translate(var(--dx,20px),-118vh) rotate(var(--rot,180deg)); opacity:0}}
+  /* Aperçu des particules dans le sélecteur (vignette) */
+  .pcl-prev{font-size:22px; line-height:42px; height:42px; display:flex; align-items:center; justify-content:center}
+  /* Récompense : mascotte / compagnon de bureau (se balade en bas de l'écran) */
+  #mascot{position:fixed; bottom:0; left:0; z-index:25; pointer-events:none}
+  #mascot.hop{animation:mascotHop .5s ease}
+  @keyframes mascotHop{0%,100%{transform:translateY(0)}40%{transform:translateY(-28px)}}
+  #mascot .mascot-img{display:block; height:var(--mh,96px); width:auto; pointer-events:auto; cursor:pointer;
+    transform-origin:bottom center; filter:drop-shadow(0 3px 4px rgba(0,0,0,.35))}
+  #mascot .mascot-inner{pointer-events:auto; cursor:pointer; transform-origin:bottom center}
+  #mascot .mascot-inner.emoji{font-size:40px; line-height:1; animation:mascotBob 1.5s ease-in-out infinite}
+  @keyframes mascotBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+  .mascot-prev{font-size:24px; line-height:42px; height:42px; display:flex; align-items:center; justify-content:center}
+  .mascot-prev img{height:36px; width:auto; display:block}
+  /* Moteur Shimeji (dev) : élément libre attrapable à la souris */
+  #shimeji{position:fixed; left:0; top:0; z-index:40; pointer-events:auto; cursor:grab; user-select:none;
+    touch-action:none; image-rendering:auto; filter:drop-shadow(0 3px 4px rgba(0,0,0,.35))}
+  #shimeji:active{cursor:grabbing}
+  /* Panneau de debug Shimeji */
+  #shimejiDbg{position:fixed; top:70px; right:10px; z-index:120; width:210px; max-height:74vh; overflow:auto;
+    background:rgba(15,18,28,.96); border:1px solid var(--line); border-radius:10px; padding:9px; font-size:11px;
+    color:var(--txt); box-shadow:0 10px 30px rgba(0,0,0,.5)}
+  #shimejiDbg .sd-h{display:flex; justify-content:space-between; align-items:center; font-weight:800; margin-bottom:7px}
+  #shimejiDbg .sd-x{background:none; border:none; color:var(--txt-dim); cursor:pointer; font-size:14px; padding:0}
+  #shimejiDbg .sd-row, #shimejiDbg .sd-anims{display:flex; flex-wrap:wrap; gap:4px}
+  #shimejiDbg .sd-lbl{color:var(--txt-dim); margin:8px 0 5px}
+  #shimejiDbg button{background:var(--card); border:1px solid var(--line); color:var(--txt); border-radius:6px;
+    padding:4px 7px; cursor:pointer; font-size:10px}
+  #shimejiDbg button:hover{border-color:var(--accent)}
+  #shimejiDbg button.sd-on{background:var(--accent); border-color:var(--accent); color:#fff}
+  #shimejiDbg .sd-auto{background:var(--ok); border-color:var(--ok); color:#fff}
+  /* Outil dev (toggle) : force le niveau pour tester les déblocages */
+  .dev-row{margin-top:18px; display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+  .dev-btn{font-size:12px; color:var(--txt-dim); background:none; border:1px dashed var(--line); border-radius:8px; padding:7px 12px; cursor:pointer}
+  .dev-btn.on{color:var(--ok); border-color:var(--ok); border-style:solid}
+  .dev-set{font-size:12px; color:var(--txt-dim); display:flex; align-items:center; gap:6px}
+  .dev-set input{width:62px; background:var(--card); border:1px solid var(--line); color:var(--txt); border-radius:8px; padding:5px 8px; outline:none}
   /* ---------- Apparence ---------- */
   .seg{display:inline-flex; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:hidden}
   .seg button{border:none; background:none; color:var(--txt-dim); padding:9px 16px; cursor:pointer; font-size:14px; font-weight:600}
@@ -348,6 +452,8 @@
   .swatch{width:32px; height:32px; border-radius:50%; cursor:pointer; border:2px solid transparent; transition:.15s}
   .swatch:hover{transform:scale(1.1)}
   .swatch.on{border-color:var(--txt); box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--txt)}
+  .swatch.locked{opacity:.5; filter:grayscale(.6); cursor:not-allowed; display:flex; align-items:center; justify-content:center; font-size:13px}
+  .swatch.locked:hover{transform:none}
   .swatch-custom{width:32px; height:32px; border-radius:50%; padding:0; border:2px dashed var(--line); cursor:pointer; background:none}
   .thumb-bg{width:100%; max-height:140px; object-fit:cover; border-radius:10px; margin-top:10px; display:none}
   .modal-actions{display:flex; gap:10px; justify-content:space-between; margin-top:22px}
@@ -397,7 +503,9 @@
 </style>
 </head>
 <body>
+<video id="bgVideo" autoplay loop muted playsinline></video>
 <header>
+  <video id="bannerVidH" class="banner-vid" muted loop playsinline></video>
   <div class="head-row">
     <button class="btn header-profile" id="headerProfile" title="Profil & statistiques">
       <span class="hp-avatar" id="hpAvatar">👤</span>
@@ -666,6 +774,16 @@
     </div>
 
     <div class="field">
+      <label>🖼️ Fond animé / dégradé (débloqué par niveau)</label>
+      <div class="bg-grid" id="bgPresetGrid"></div>
+    </div>
+
+    <div class="field">
+      <label>🎭 Thème exclusif (débloqué par niveau)</label>
+      <div class="bg-grid" id="themePresetGrid"></div>
+    </div>
+
+    <div class="field">
       <label>Orientation des cartes</label>
       <div class="seg" id="orientSeg">
         <button type="button" data-orient="vertical">📱 Verticale (jaquette)</button>
@@ -706,6 +824,7 @@
   <div class="modal">
     <h2><span>📊 Profil &amp; Statistiques</span><button class="x" id="closeStats">✕</button></h2>
     <input type="file" id="profilePicInput" accept="image/*" style="display:none">
+    <input type="file" id="bannerImgInput" accept="image/*" style="display:none">
     <div id="statsBody"></div>
     <div class="modal-actions">
       <div></div>
@@ -1415,10 +1534,82 @@ async function decryptVault(blob, pass){
 }
 // ---- Profil (pseudo + photo) : stocké en local ET synchronisé (data.json) pour le suivi entre appareils ----
 const PROFILE = {
-  cfg:{ name:'', pic:null, updated:0 },   // pic = dataURL JPEG compressé (petit avatar)
+  cfg:{ name:'', pic:null, frame:'none', nameFx:'none', particles:'none', mascot:'none', mascotSkin:0, banner:'', bannerImg:null, updated:0 },   // nameFx=id NAME_FX ; particles=id PARTICLES ; mascot=id MASCOTS ; mascotSkin=index du modèle alternatif ; banner=id BG_PRESETS|'custom' ; bannerImg=dataURL si perso
   load(){ try{ Object.assign(this.cfg, JSON.parse(localStorage.getItem('mc_profile')||'{}')); }catch(e){} },
   store(){ localStorage.setItem('mc_profile', JSON.stringify(this.cfg)); },
 };
+// Cadres d'avatar débloqués par niveau (récompenses cosmétiques).
+const FRAMES = [
+  {id:'none',     name:'Aucun',       lvl:1},
+  {id:'bronze',   name:'Bronze',      lvl:3},
+  {id:'silver',   name:'Argent',      lvl:5},
+  {id:'gold',     name:'Or',          lvl:10},
+  {id:'emerald',  name:'Émeraude',    lvl:15},
+  {id:'sapphire', name:'Saphir',      lvl:20},
+  {id:'ruby',     name:'Rubis',       lvl:30},
+  {id:'rainbow',  name:'Arc-en-ciel', lvl:50},
+];
+// Effets de pseudo animé débloqués par niveau (appliqués au nom du profil, synchronisés via PROFILE).
+const NAME_FX = [
+  {id:'none',    name:'Aucun',         lvl:1},
+  {id:'grad',    name:'Dégradé',       lvl:5},
+  {id:'flame',   name:'Flamme',        lvl:15},
+  {id:'shimmer', name:'Scintillement', lvl:25},
+  {id:'gold',    name:'Or',            lvl:40},
+];
+const nameFxClass = id => (id && id!=='none') ? 'name-fx-'+id : '';
+// Particules d'ambiance débloquées par niveau (couche flottante sur toute la page, synchronisées via PROFILE).
+const PARTICLES = [
+  {id:'none',    name:'Aucune',       lvl:1,  emoji:''},
+  {id:'sakura',  name:'Pétales',      lvl:5,  emoji:'🌸', dir:'fall', wind:true},
+  {id:'snow',    name:'Neige',        lvl:12, emoji:'❄️', dir:'fall'},
+  {id:'stars',   name:'Étoiles',      lvl:20, emoji:'✨', dir:'rise'},
+  {id:'bubbles', name:'Bulles',       lvl:30, emoji:'🫧', dir:'rise'},
+  {id:'leaves',  name:'Feuilles',     lvl:40, emoji:'🍂', dir:'fall', wind:true},
+];
+// Table d'animations d'Umbreon (sprites nommés par animation, partagés entre Normal et Shiny — seul le dossier change).
+// Pose = {img, ax/ay = point d'ancrage, vx/vy = vitesse, dur = durée en ticks}. Défaut 128×128 → ancre 64,128 (pieds au centre-bas).
+const _U = (f,vx,vy,dur,ax,ay,w,h)=>({img:f+'.png', ax:ax==null?64:ax, ay:ay==null?128:ay, w:w||128, h:h||128, vx:vx||0, vy:vy||0, dur:dur||8});
+const UMBREON_ANIMS = {
+  Stand:    [[_U('Idel',0,0,250)]],
+  Walk:     [[_U('Walk & Run Fram 1',-2,0,8), _U('Walk & Run Fram 2',-2,0,8)]],
+  Run:      [[_U('Walk & Run Fram 1',-5,0,5), _U('Walk & Run Fram 2',-5,0,5)]],
+  Dash:     [[_U('Walk & Run Fram 1',-9,0,4), _U('Walk & Run Fram 2',-9,0,4)]],
+  Sit:      [[_U('Sit Fram 1-10',0,0,250)]],
+  Sprawl:   [[_U('Sleep Fram 1',0,0,30), _U('Sleep Fram 2',0,0,30)]],          // dort = allongé
+  Jumping:  [[_U('Jump',0,0,250)]],
+  Falling:  [[_U('Fall',0,0,250)]],
+  Bouncing: [[_U('Bouncing Fram 1',0,0,4), _U('Bouncing Fram 2',0,0,4)]],
+  // Escalade : « Walk Wall » (173×128) = mur ; « Walk Climb » (128×173) = plafond. Ancres adaptées à chaque comportement.
+  ClimbWall:    [[_U('Walk Wall Fram 1',0,0,8,86,128,173,128), _U('Walk Wall Fram 2',0,0,8,86,128,173,128)]],
+  GrabWall:     [[_U('Walk Wall Fram 1',0,0,250,86,128,173,128)]],
+  ClimbCeiling: [[_U('Walk Climb Fram 1',0,0,8,64,30,128,173), _U('Walk Climb Fram 2',0,0,8,64,30,128,173)]],
+  GrabCeiling:  [[_U('Walk Climb Fram 1',0,0,250,64,30,128,173)]],
+  // Attrapé à la souris : pose tenue + frames de gigotement.
+  Pinched:  [[_U('Grab By Mouse Fram 1-10 Fram',0,0,8)]],
+  Resisting:[[_U('Grab By Mouse Fram 11',0,0,6), _U('Grab By Mouse Fram 12',0,0,6)]],
+  // Animations « bonus » du perso, jouées ponctuellement sur place :
+  Wink:      [[_U('Idel',0,0,10), _U("Clin d'oeil Fram 1",0,0,8), _U("Clin d'oeil Fram 2",0,0,10), _U("Clin d'oeil Fram 1",0,0,8)]],
+  Kick:      [[_U('Kick Fram 1',0,0,8), _U('Kick Fram 2',0,0,10), _U('Kick Fram 1',0,0,8)]],
+  ShowBottom:[[_U('Show Bottom Fram 1-5',0,0,16), _U('Show Bottom Fram 6',0,0,10), _U('Show Bottom Fram 7',0,0,18), _U('Show Bottom Fram 6',0,0,10)]],
+  Sit2:      [[_U('Sit 2 Fram 1',0,0,16), _U('Sit 2 Fram 2',0,0,18), _U('Sit 2 Fram 1',0,0,16)]],
+  SitFidget: [[_U('Sit Fram 1-10',0,0,10), _U('Sit Fram 11',0,0,12), _U('Sit Fram 12',0,0,14), _U('Sit Fram 11',0,0,12)]],
+};
+// Liste d'aperçu du panneau debug = les animations « sources » d'Umbreon (1 entrée par sprite fourni) : [clé moteur, libellé].
+const UMBREON_PREVIEW = [
+  ['Stand','Idle'], ['Walk','Walk & Run'], ['SitFidget','Sit'], ['Sit2','Sit 2'], ['Sprawl','Sleep'],
+  ['Jumping','Jump'], ['Falling','Fall'], ['Bouncing','Bouncing'], ['ClimbWall','Walk Wall (mur)'],
+  ['ClimbCeiling','Walk Climb (plafond)'], ['Pinched','Grab By Mouse'], ['Resisting','Grab (gigote)'],
+  ['Wink',"Clin d'œil"], ['Kick','Kick'], ['ShowBottom','Show Bottom'],
+];
+// Mascottes / compagnons de bureau débloquées par niveau (se baladent en bas de l'écran, synchronisées via PROFILE).
+const MASCOTS = [
+  {id:'none',   name:'Aucune',  lvl:1,  emoji:''},
+  // Mascotte Umbreon (moteur Shimeji maison) — sprites nommés par animation (cf UMBREON_ANIMS), 2 modèles Normal/Shiny.
+  {id:'shimeji', name:'Umbreon', lvl:10, emoji:'🌙', icon:'mascots/umbreon/normal/icon.png', shimeji:{img:'mascots/umbreon/normal/', anims:UMBREON_ANIMS, preview:UMBREON_PREVIEW},
+    // Modèles alternatifs (mêmes animations, dossier de sprites différent) : bouton « modèle » pour basculer.
+    skins:[ {name:'Normal', img:'mascots/umbreon/normal/'}, {name:'✨ Shiny', img:'mascots/umbreon/shiny/'} ]},
+];
 // Barème XP + niveau (passer au niv. suivant coûte 100×niveau ; cumul pour atteindre L = 50·L·(L-1)).
 function computeXP(){
   let xp = 0;
@@ -1430,6 +1621,8 @@ function computeXP(){
   });
   const level = Math.max(1, Math.floor((1 + Math.sqrt(1 + xp/12.5)) / 2));
   const cur = 50*level*(level-1), next = 50*(level+1)*level;
+  const dev = +localStorage.getItem('mc_devlvl') || 0;   // mode dev (toggle) : force le niveau pour tester les déblocages — n'altère PAS le vrai XP
+  if(dev>0) return { xp, level:dev, into:0, need:100*dev, dev:true };
   return { xp, level, into: xp-cur, need: next-cur };
 }
 // Titre de profil évolutif selon le niveau.
@@ -1481,6 +1674,27 @@ function checkBadges(){
   if(known===null) return;                       // 1ʳᵉ fois : on mémorise sans notifier
   unlocked.filter(b=>!known.includes(b.label))
     .forEach((b,i)=>setTimeout(()=>toast('🏅 Badge débloqué : '+b.icon+' '+b.label), 500+i*1100));
+}
+// Effet « level up » : confettis + toast quand le niveau augmente (silencieux au 1er lancement / en mode dev).
+function checkLevelUp(){
+  if(localStorage.getItem('mc_devlvl')) return;        // pas de level-up pendant que le mode dev est actif
+  const lvl = computeXP().level;
+  let last; try{ last = JSON.parse(localStorage.getItem('mc_lastlvl')||'null'); }catch(e){ last=null; }
+  localStorage.setItem('mc_lastlvl', String(lvl));
+  if(last!==null && lvl>last) celebrateLevel(lvl);
+}
+function celebrateLevel(lvl){
+  toast('🎉 Niveau '+lvl+' atteint !');
+  const colors=['#ff5c8a','#ffb454','#4dd4ac','#5b8def','#7c5cff','#ffd700'];
+  for(let i=0;i<40;i++){
+    const d=document.createElement('div'); d.className='confetti';
+    d.style.left=Math.random()*100+'vw';
+    d.style.background=colors[i%colors.length];
+    d.style.animationDelay=(Math.random()*0.35)+'s';
+    d.style.animationDuration=(2+Math.random()*1.2)+'s';
+    document.body.appendChild(d);
+    setTimeout(()=>d.remove(), 3600);
+  }
 }
 // Quelle source pour quel type (null = pas encore supporté → bouton masqué).
 function metaSourceFor(type){
@@ -2247,7 +2461,7 @@ const SYNC = {
       }
       // Profil (pseudo + photo) : le plus récent gagne
       if(remoteProfile && (remoteProfile.updated||0) > (PROFILE.cfg.updated||0)){
-        PROFILE.cfg = {name:remoteProfile.name||'', pic:remoteProfile.pic||null, updated:remoteProfile.updated||0}; PROFILE.store();
+        PROFILE.cfg = {name:remoteProfile.name||'', pic:remoteProfile.pic||null, frame:remoteProfile.frame||'none', banner:remoteProfile.banner||'', bannerImg:remoteProfile.bannerImg||null, updated:remoteProfile.updated||0}; PROFILE.store();
       }
       // Fond d'écran : le plus récent gagne (entre cet appareil et le dépôt)
       if(remoteBg && (remoteBg.updated||0) > (THEME.cfg.bgUpdated||0)){
@@ -2356,7 +2570,7 @@ const LOCAL = {
       META.cfg.secretsEnc = data.secrets; META.store();
     }
     if(data.profile && (data.profile.updated||0) > (PROFILE.cfg.updated||0)){
-      PROFILE.cfg = {name:data.profile.name||'', pic:data.profile.pic||null, updated:data.profile.updated||0}; PROFILE.store();
+      PROFILE.cfg = {name:data.profile.name||'', pic:data.profile.pic||null, frame:data.profile.frame||'none', banner:data.profile.banner||'', bannerImg:data.profile.bannerImg||null, updated:data.profile.updated||0}; PROFILE.store();
     }
     const merged = SYNC.merge(items, incoming);
     for(const id in tombstones){ await DB.del(id); }
@@ -2370,6 +2584,7 @@ const LOCAL = {
 // Aiguillage après chaque modification, selon le mode choisi
 async function afterChange(){
   checkBadges();                              // notifie les badges nouvellement débloqués
+  checkLevelUp();                             // confettis si le niveau a augmenté
   // En local : on écrit dans le geste utilisateur -> l'autorisation est conservée et la sauvegarde continue
   if(SYNC.cfg.mode==='local') await LOCAL.save();
   else SYNC.autoPush();
@@ -2388,10 +2603,43 @@ const ACCENTS = [
   {a:'#4dabf7', b:'#3b82f6'},  // bleu
   {a:'#ff6b6b', b:'#ee5253'},  // rouge
   {a:'#22d3ee', b:'#0ea5e9'},  // cyan
+  // — exclusifs, débloqués par niveau —
+  {a:'#f6d365', b:'#fda085', lvl:5},   // pêche dorée
+  {a:'#ffd700', b:'#ff8c00', lvl:10},  // or
+  {a:'#11998e', b:'#38ef7d', lvl:15},  // émeraude
+  {a:'#fc5c7d', b:'#6a82fb', lvl:20},  // bonbon
+  {a:'#c31432', b:'#a8324a', lvl:30},  // rubis
+  {a:'#8a2be2', b:'#ff1493', lvl:50},  // néon légende
+];
+// Fonds animés débloquables par niveau (vidéos MoeWalls compressées dans backgrounds/).
+const BG_PRESETS = [
+  {id:'train',   name:'🚆 Train de nuit', lvl:3,  type:'video', file:'backgrounds/lonely-night-train.mp4'},
+  {id:'nikke',   name:'🧜 Sirène',        lvl:6,  type:'video', file:'backgrounds/little-mermaid-drowning-goddess-of-victory-nikke.mp4'},
+  {id:'gothic',  name:'🖤 Gothique',      lvl:9,  type:'video', file:'backgrounds/gothic-anime-girl-crows.mp4'},
+  {id:'tanjiro', name:'⚔️ Tanjiro',       lvl:13, type:'video', file:'backgrounds/tanjiro-crimson-nichirin-kimetsu-no-yaiba.mp4'},
+  {id:'killua',  name:'⚡ Killua',         lvl:17, type:'video', file:'backgrounds/killua-lightning-hunter-x-hunter.mp4'},
+  {id:'lincy',   name:'🔮 Lincy',         lvl:22, type:'video', file:'backgrounds/lincy-rebellion-godsoul.mp4'},
+  {id:'miku',    name:'🎤 Miku',          lvl:28, type:'video', file:'backgrounds/mikuos.mp4'},
+  {id:'jinwoo',  name:'🗡️ Sung Jinwoo',   lvl:35, type:'video', file:'backgrounds/sung-jinwoo-shadow-army-solo-leveling.mp4'},
+  {id:'igris',   name:'🐉 Igris',         lvl:42, type:'video', file:'backgrounds/igris-shadow-solo-leveling.mp4'},
+  {id:'luffy',   name:'🔴 Luffy Gear 5',  lvl:50, type:'video', file:'backgrounds/gear-5-luffy-ultimate-one-piece.mp4'},
+];
+// Thèmes complets débloquables : surcharges de variables CSS appliquées par-dessus le thème de base.
+const THEME_PRESETS = [
+  {id:'ocean',    name:'🌊 Océan',   lvl:5,  vars:{'--bg':'#0a1622','--bg2':'#0f2236','--card':'#14304a','--card-h':'#1b3e5e','--line':'#244e72','--txt':'#e6f1fb','--txt-dim':'#8fa9c4','--accent':'#22d3ee','--accent-2':'#0ea5e9'}},
+  {id:'forest',   name:'🌲 Forêt',   lvl:8,  vars:{'--bg':'#0c1a12','--bg2':'#102a1c','--card':'#163b27','--card-h':'#1e4d33','--line':'#276343','--txt':'#e6f5ec','--txt-dim':'#8fb89e','--accent':'#2ecc71','--accent-2':'#27ae60'}},
+  {id:'midnight', name:'🌃 Minuit',  lvl:12, vars:{'--bg':'#070b16','--bg2':'#0d1426','--card':'#121b33','--card-h':'#1a2747','--line':'#243456','--txt':'#e8eaf0','--txt-dim':'#8b93ad'}},
+  {id:'inferno',  name:'🔥 Inferno', lvl:16, vars:{'--bg':'#160606','--bg2':'#220a0a','--card':'#331010','--card-h':'#461616','--line':'#5e2020','--txt':'#fbe8e8','--txt-dim':'#c79a9a','--accent':'#ff6b3d','--accent-2':'#ff3d3d'}},
+  {id:'galaxy',   name:'🌌 Galaxie', lvl:20, vars:{'--bg':'#0a0a1f','--bg2':'#12122e','--card':'#1a1a3d','--card-h':'#232350','--line':'#2f2f6b','--txt':'#ece8ff','--txt-dim':'#9a96c4','--accent':'#7c5cff','--accent-2':'#b15cff'}},
+  {id:'neon',     name:'💜 Néon',    lvl:24, vars:{'--bg':'#0a0014','--bg2':'#140222','--card':'#1d0833','--card-h':'#2a1048','--line':'#3d1a66','--txt':'#f0e6ff','--accent':'#d400ff','--accent-2':'#00e5ff'}},
+  {id:'dracula',  name:'🧛 Dracula', lvl:28, vars:{'--bg':'#21222c','--bg2':'#282a36','--card':'#343746','--card-h':'#424458','--line':'#44475a','--txt':'#f8f8f2','--txt-dim':'#9aa0b4','--accent':'#bd93f9','--accent-2':'#ff79c6'}},
+  {id:'sepia',    name:'☕ Sépia',    lvl:33, vars:{'--bg':'#1c1410','--bg2':'#271c15','--card':'#33261c','--card-h':'#423124','--line':'#574030','--txt':'#f0e6d8','--txt-dim':'#b09a82','--accent':'#d6a35c','--accent-2':'#c4823a'}},
+  {id:'sakura',   name:'🌸 Sakura',  lvl:40, vars:{'--bg':'#fff0f5','--bg2':'#ffffff','--card':'#fff5f9','--card-h':'#ffe9f1','--line':'#f6d2e1','--txt':'#3a2230','--txt-dim':'#9a7080','--accent':'#ff5c8a','--accent-2':'#ff8ab0'}},
+  {id:'gold',     name:'👑 Or royal', lvl:50, vars:{'--bg':'#14110a','--bg2':'#1f1a0e','--card':'#2a2313','--card-h':'#392f1a','--line':'#4d4022','--txt':'#f5ecd0','--txt-dim':'#c0ad82','--accent':'#ffd700','--accent-2':'#ff8c00'}},
 ];
 const THEME = {
   // bgPath/bgUpdated/bgDirty servent à synchroniser le fond d'écran via GitHub (cf. SYNC.push/run)
-  cfg:{theme:'dark', accent:'', accent2:'', cardMin:'170px', cardOrient:'vertical', bgPath:null, bgUpdated:0, bgDirty:false},
+  cfg:{theme:'dark', accent:'', accent2:'', cardMin:'170px', cardOrient:'vertical', bgPreset:'', themePreset:'', bgPath:null, bgUpdated:0, bgDirty:false},
   bg:null,
   load(){ try{ Object.assign(this.cfg, JSON.parse(localStorage.getItem('mc_theme')||'{}')); }catch(e){} },
   store(){ localStorage.setItem('mc_theme', JSON.stringify(this.cfg)); },
@@ -2399,15 +2647,34 @@ const THEME = {
     const root = document.documentElement;
     root.setAttribute('data-theme', this.cfg.theme||'dark');
     root.setAttribute('data-cards', this.cfg.cardOrient||'vertical');
-    if(this.cfg.accent){ root.style.setProperty('--accent', this.cfg.accent);
-      root.style.setProperty('--accent-2', this.cfg.accent2||this.cfg.accent); }
-    else { root.style.removeProperty('--accent'); root.style.removeProperty('--accent-2'); }
+    // On efface toutes les surcharges possibles (thème exclusif + accent), puis on réapplique.
+    ['--bg','--bg2','--card','--card-h','--line','--txt','--txt-dim','--accent','--accent-2'].forEach(v=>root.style.removeProperty(v));
+    const tp = THEME_PRESETS.find(p=>p.id===this.cfg.themePreset);
+    if(tp) Object.entries(tp.vars).forEach(([k,v])=>root.style.setProperty(k,v));
+    // L'accent choisi par l'utilisateur a priorité sur celui du thème exclusif.
+    if(this.cfg.accent){ root.style.setProperty('--accent', this.cfg.accent); root.style.setProperty('--accent-2', this.cfg.accent2||this.cfg.accent); }
     root.style.setProperty('--card-min', this.cfg.cardMin||'170px');
     this.applyBg();
   },
   applyBg(){
-    if(this.bg){ document.body.style.backgroundImage=`url(${this.bg})`; document.body.classList.add('has-bg'); }
-    else { document.body.style.backgroundImage=''; document.body.classList.remove('has-bg'); }
+    const v = document.getElementById('bgVideo');
+    const preset = BG_PRESETS.find(p=>p.id===this.cfg.bgPreset);
+    // reset
+    document.body.style.backgroundImage=''; document.body.style.backgroundSize=''; document.body.style.backgroundAttachment='';
+    if(v){ v.style.display='none'; if(v.getAttribute('src')){ v.removeAttribute('src'); v.load(); } }
+    document.body.classList.remove('has-bg','bg-video');
+    if(preset && preset.type==='gradient'){
+      document.body.style.backgroundImage=preset.css; document.body.style.backgroundSize='cover'; document.body.style.backgroundAttachment='fixed';
+      document.body.classList.add('has-bg');
+    } else if(preset && preset.type==='video' && v){
+      v.src=preset.file; v.style.display='block';
+      v.muted=true; v.loop=true; v.playsInline=true;
+      const go=()=>{ if(v.play) v.play().catch(()=>{}); };
+      v.oncanplay=go; go();                              // (re)lance la lecture une fois prêt
+      document.body.classList.add('has-bg','bg-video');  // voile allégé pour voir l'animation
+    } else if(this.bg){                                   // image custom uploadée (repli)
+      document.body.style.backgroundImage=`url(${this.bg})`; document.body.classList.add('has-bg');
+    }
   },
   async loadBg(){ try{ this.bg = await DB.meta('bgImage') || null; }catch(e){ this.bg=null; } this.applyBg(); },
   // Applique un fond reçu du dépôt SANS toucher aux horodatages (réconciliation)
@@ -2432,13 +2699,45 @@ function renderThemePanel(){
   $('#orientSeg').querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.orient===(THEME.cfg.cardOrient||'vertical')));
   const sw = $('#accentSwatches');
   sw.querySelectorAll('.swatch').forEach(e=>e.remove());
+  const lvl = computeXP().level;
   ACCENTS.forEach(c=>{
-    const el=document.createElement('button'); el.type='button'; el.className='swatch';
+    const ok = !c.lvl || lvl>=c.lvl;
+    const el=document.createElement('button'); el.type='button'; el.className='swatch'+(ok?'':' locked');
     el.style.background=`linear-gradient(135deg,${c.a},${c.b})`;
-    const active = (THEME.cfg.accent||ACCENTS[0].a).toLowerCase()===c.a.toLowerCase();
+    if(!ok){ el.textContent='🔒'; el.title='Couleur débloquée au niveau '+c.lvl; }
+    const active = ok && (THEME.cfg.accent||ACCENTS[0].a).toLowerCase()===c.a.toLowerCase();
     if(active) el.classList.add('on');
-    el.onclick=()=>{ THEME.cfg.accent=c.a; THEME.cfg.accent2=c.b; THEME.store(); THEME.apply(); renderThemePanel(); };
+    el.onclick = ok
+      ? ()=>{ THEME.cfg.accent=c.a; THEME.cfg.accent2=c.b; THEME.store(); THEME.apply(); renderThemePanel(); }
+      : ()=>toast('🔒 Couleur débloquée au niveau '+c.lvl);
     sw.insertBefore(el, $('#accentCustom'));
+  });
+  // Fonds débloquables (dégradés + vidéos)
+  const bgGrid = $('#bgPresetGrid'), curBg = THEME.cfg.bgPreset||'';
+  bgGrid.innerHTML = [{id:'',name:'Aucun',lvl:1,type:'none'}, ...BG_PRESETS].map(p=>{
+    const ok = !p.lvl || lvl>=p.lvl, sel = curBg===p.id;
+    const prev = p.type==='video' ? `center/cover url('${p.file.replace('.mp4','.jpg')}')`
+               : p.type==='gradient' ? p.css : 'var(--bg2)';
+    return `<button class="bg-it${ok?'':' locked'}${sel?' sel':''}" data-bg="${p.id}" data-lvl="${p.lvl||1}">
+      <span class="bg-prev" style="background:${prev}"></span>${ok?'':'<span class="bg-lock">🔒</span>'}
+      <span class="bg-name">${p.name}${ok?'':' · '+p.lvl}</span></button>`;
+  }).join('');
+  bgGrid.querySelectorAll('.bg-it').forEach(b=>b.onclick=()=>{
+    if(b.classList.contains('locked')){ toast('🔒 Débloqué au niveau '+b.dataset.lvl); return; }
+    THEME.cfg.bgPreset=b.dataset.bg; THEME.store(); THEME.apply(); renderThemePanel();
+  });
+  // Thèmes exclusifs
+  const tGrid = $('#themePresetGrid'), curT = THEME.cfg.themePreset||'';
+  tGrid.innerHTML = [{id:'',name:'Normal',lvl:1,vars:null}, ...THEME_PRESETS].map(p=>{
+    const ok = !p.lvl || lvl>=p.lvl, sel = curT===p.id;
+    const prev = p.vars ? `linear-gradient(135deg,${p.vars['--bg']||'#222'},${p.vars['--card']||'#333'})` : 'var(--bg2)';
+    return `<button class="bg-it${ok?'':' locked'}${sel?' sel':''}" data-tp="${p.id}" data-lvl="${p.lvl||1}">
+      <span class="bg-prev" style="background:${prev}"></span>${ok?'':'<span class="bg-lock">🔒</span>'}
+      <span class="bg-name">${p.name}${ok?'':' · '+p.lvl}</span></button>`;
+  }).join('');
+  tGrid.querySelectorAll('.bg-it').forEach(b=>b.onclick=()=>{
+    if(b.classList.contains('locked')){ toast('🔒 Débloqué au niveau '+b.dataset.lvl); return; }
+    THEME.cfg.themePreset=b.dataset.tp; THEME.store(); THEME.apply(); renderThemePanel();
   });
   $('#cardSizeSel').value = THEME.cfg.cardMin||'170px';
   const prev=$('#bgPreview');
@@ -2455,20 +2754,451 @@ function wireProfile(){
   const pn = $('#profileName'); if(pn) pn.onchange = ()=>{ PROFILE.cfg.name = pn.value.trim().slice(0,24); PROFILE.cfg.updated = Date.now(); PROFILE.store(); renderHeaderProfile(); afterChange(); };
 }
 // Met à jour le widget profil du header (avatar + niveau) — appelé à chaque rendu.
+// Si le niveau a baissé, on retire les récompenses équipées que le joueur n'a plus le droit d'avoir.
+function enforceUnlocks(){
+  const lvl = computeXP().level;
+  const fr = FRAMES.find(f=>f.id===(PROFILE.cfg.frame||'none'));
+  if(fr && lvl < fr.lvl){ PROFILE.cfg.frame='none'; PROFILE.cfg.updated=Date.now(); PROFILE.store(); }
+  const nf = NAME_FX.find(f=>f.id===(PROFILE.cfg.nameFx||'none'));
+  if(nf && lvl < nf.lvl){ PROFILE.cfg.nameFx='none'; PROFILE.cfg.updated=Date.now(); PROFILE.store(); }
+  const bn = BG_PRESETS.find(p=>p.id===PROFILE.cfg.banner);
+  if(bn && lvl < bn.lvl){ PROFILE.cfg.banner=''; PROFILE.cfg.updated=Date.now(); PROFILE.store(); }
+  let themeChanged = false;
+  const ac = ACCENTS.find(c=>c.lvl && (THEME.cfg.accent||'').toLowerCase()===c.a.toLowerCase());
+  if(ac && lvl < ac.lvl){ THEME.cfg.accent=''; THEME.cfg.accent2=''; themeChanged=true; }
+  const bp = BG_PRESETS.find(p=>p.id===THEME.cfg.bgPreset);
+  if(bp && bp.lvl && lvl < bp.lvl){ THEME.cfg.bgPreset=''; themeChanged=true; }
+  const tp = THEME_PRESETS.find(p=>p.id===THEME.cfg.themePreset);
+  if(tp && tp.lvl && lvl < tp.lvl){ THEME.cfg.themePreset=''; themeChanged=true; }
+  if(themeChanged){ THEME.store(); THEME.apply(); }
+  const pa = PARTICLES.find(p=>p.id===(PROFILE.cfg.particles||'none'));
+  if(pa && lvl < pa.lvl){ PROFILE.cfg.particles='none'; PROFILE.cfg.updated=Date.now(); PROFILE.store(); }
+  const ma = MASCOTS.find(p=>p.id===(PROFILE.cfg.mascot||'none'));
+  if(ma && lvl < ma.lvl){ PROFILE.cfg.mascot='none'; PROFILE.cfg.updated=Date.now(); PROFILE.store(); }
+}
+// Couche de particules d'ambiance flottant sur toute la page (récompense équipable, synchronisée).
+function applyParticles(){
+  const id = PROFILE.cfg.particles || 'none';
+  let layer = document.getElementById('particleLayer');
+  if(id==='none'){ if(layer) layer.remove(); return; }
+  const p = PARTICLES.find(x=>x.id===id); if(!p){ if(layer) layer.remove(); return; }
+  if(layer && layer.dataset.kind===id) return;     // déjà en place : pas de reconstruction (évite le clignotement)
+  if(!layer){ layer = document.createElement('div'); layer.id='particleLayer'; document.body.appendChild(layer); }
+  layer.dataset.kind = id;
+  const rise = p.dir==='rise', N = p.wind ? 34 : 24;
+  let html = '';
+  for(let i=0;i<N;i++){
+    const left = (p.wind ? -15 + Math.random()*175 : Math.random()*100).toFixed(1);   // vent : spawn sur toute la largeur (hors écran des 2 côtés) pour couvrir aussi la gauche
+    const dur  = (6 + Math.random()*9).toFixed(1);
+    const delay= (-Math.random()*dur).toFixed(1);
+    const size = (12 + Math.random()*16).toFixed(0);
+    // vent : dérive marquée vers la gauche (haut-droite → bas-gauche) ; sinon légère dérive aléatoire
+    const dx   = (p.wind ? -(320 + Math.random()*480) : (Math.random()*80-40)).toFixed(0);
+    const rot  = (Math.random()*720-360).toFixed(0);
+    html += `<span class="pcl ${rise?'pcl-rise':'pcl-fall'}" style="left:${left}%; font-size:${size}px; --dx:${dx}px; --rot:${rot}deg; animation-duration:${dur}s; animation-delay:${delay}s">${p.emoji}</span>`;
+  }
+  layer.innerHTML = html;
+}
+// ---- Mascotte / compagnon de bureau : se balade en bas de l'écran (marche ↔ idle, demi-tours, clic) ----
+// Mascottes « image » : suite de frames PNG individuelles (anim:{idle,walk,run?,click?}, chaque anim = {base,files,fps}).
+// Mascottes « emoji » : simple emoji animé (repli, pas d'assets).
+let _mascotTO = null, _mascotFrames = null;
+function mascotUrls(a){ return a.files.map(f => a.base + f); }
+function mascotStop(){ clearTimeout(_mascotTO); clearInterval(_mascotFrames); _mascotFrames = null; }
+function mascotW(m){ return m.anim ? (m.h || 96) : 44; }   // largeur ≈ hauteur (frames carrées)
+function applyMascot(){
+  const id = PROFILE.cfg.mascot || 'none';
+  let el = document.getElementById('mascot');
+  const m = MASCOTS.find(x=>x.id===id);
+  if(id==='none' || !m){ mascotStop(); if(el) el.remove(); SHIMEJI.stop(); return; }
+  if(m.shimeji){ mascotStop(); if(el) el.remove();
+    const sk = m.skins && m.skins[PROFILE.cfg.mascotSkin||0];   // modèle sélectionné (Normal/Shiny) : seul le dossier de sprites change
+    SHIMEJI.start({ img: sk ? sk.img : m.shimeji.img, anims: m.shimeji.anims, preview: m.shimeji.preview, conf: m.shimeji.conf }); return; }   // moteur Shimeji
+  SHIMEJI.stop();
+  if(el && el.dataset.kind===id) return;          // déjà en place : on ne réinitialise pas la balade
+  mascotStop();
+  if(!el){ el=document.createElement('div'); el.id='mascot'; document.body.appendChild(el); }
+  el.dataset.kind = id;
+  if(m.anim){
+    el.innerHTML = '<img class="mascot-img" alt="">';
+    el.style.setProperty('--mh', (m.h||96)+'px');
+    Object.values(m.anim).forEach(a=>mascotUrls(a).forEach(u=>{ const im=new Image(); im.src=u; }));  // préchargement
+  } else {
+    el.innerHTML = `<div class="mascot-inner emoji">${m.emoji||'🐾'}</div>`;
+    el.style.removeProperty('--mh');
+  }
+  el.onclick = ()=>mascotClick(el, m);
+  const vw = window.innerWidth, w = mascotW(m);
+  el.style.transition = 'none';
+  el.style.left = Math.round(Math.random()*(vw-w-40)+20)+'px';
+  mascotIdle(el, m);
+}
+function mascotPlay(el, m, name){       // boucle de frames pour une animation (idle/walk/run)
+  clearInterval(_mascotFrames); _mascotFrames = null;
+  if(!m.anim) return;
+  const a = m.anim[name] || m.anim.idle; if(!a) return;
+  const img = el.querySelector('.mascot-img'); if(!img) return;
+  const urls = mascotUrls(a); let i=0; img.src = urls[0];
+  if(urls.length>1) _mascotFrames = setInterval(()=>{ i=(i+1)%urls.length; img.src=urls[i]; }, 1000/(a.fps||6));
+}
+function mascotFace(el, m, dir){        // retourne la mascotte selon le sens vs son orientation native
+  const flip = (m.native==='right') ? (dir<0) : (dir>0);
+  const node = m.anim ? el.querySelector('.mascot-img') : el.querySelector('.mascot-inner');
+  if(node) node.style.transform = flip ? 'scaleX(-1)' : '';
+}
+function mascotIdle(el, m){
+  el.classList.remove('walking');
+  mascotPlay(el, m, 'idle');
+  _mascotTO = setTimeout(()=>mascotWalk(el, m), 1800 + Math.random()*3500);
+}
+function mascotWalk(el, m){
+  const vw = window.innerWidth, w = mascotW(m), cur = parseFloat(el.style.left)||0;
+  let target = Math.round(Math.random()*(vw-w-20)+10);
+  if(Math.abs(target-cur) < 90) target = cur + (target>=cur ? 150 : -150);   // évite les micro-déplacements
+  target = Math.max(10, Math.min(vw-w-10, target));
+  const dir = target>=cur ? 1 : -1;
+  const run = !!(m.anim && m.anim.run) && Math.random() < 0.3;                // ~30 % du temps : il court
+  const dur = Math.max(.6, Math.abs(target-cur) / (run ? 130 : 55));          // course ~130 px/s, marche ~55 px/s
+  mascotFace(el, m, dir);
+  el.classList.add('walking');
+  mascotPlay(el, m, run ? 'run' : 'walk');
+  el.style.transition = `left ${dur}s linear`;
+  requestAnimationFrame(()=>{ el.style.left = target+'px'; });
+  _mascotTO = setTimeout(()=>mascotIdle(el, m), dur*1000 + 40);
+}
+function mascotClick(el, m){
+  toast('🐾 '+m.name);
+  if(m.anim && m.anim.click){            // joue l'anim de clic une fois, sur place, puis retour à l'idle
+    mascotStop();
+    el.classList.remove('walking');
+    const x = el.getBoundingClientRect().left;
+    el.style.transition='none'; el.style.left = Math.round(x)+'px';
+    const a = m.anim.click, img = el.querySelector('.mascot-img'), urls = mascotUrls(a); let i=0;
+    img.src = urls[0];
+    _mascotFrames = setInterval(()=>{
+      i++;
+      if(i>=urls.length){ clearInterval(_mascotFrames); _mascotFrames=null; mascotIdle(el, m); return; }
+      img.src = urls[i];
+    }, 1000/(a.fps||8));
+  } else {                               // emoji : petit saut
+    el.classList.remove('hop'); void el.offsetWidth; el.classList.add('hop');
+  }
+}
+// ============================================================
+//  Moteur Shimeji (compagnon de bureau « façon Shimeji-ee »)
+//  - charge actions.xml du pack au runtime (DOMParser) → animations fidèles à n'importe quel pack
+//  - FSM maison (stable) : debout / marche / course / assis / allongé, gravité + chute + rebond,
+//    attraper & lancer à la souris, grimper aux murs de la fenêtre.
+//  - Limite navigateur : pas d'interaction avec d'AUTRES fenêtres de l'OS (actions « IE » ignorées).
+// ============================================================
+const SHIMEJI = {
+  pack:null, anims:{}, imgEl:null, timer:null, S:0.62, F:128,
+  x:0, y:0, dir:-1, vx:0, vy:0, state:'stand', anim:null, frame:0, ftick:0, beh:0,
+  targetX:0, thenClimb:false, climbY:0, curName:'', drag:false, cx:0, cy:0, cvx:0, cvy:0,
+  _onMove:null, _onUp:null,
+  async start(cfg){
+    if(this.pack===cfg.img && this.timer) return;     // déjà lancé sur ce pack
+    this.stop();
+    const token = (this._token=(this._token||0)+1);   // anti-course : invalide si re-stop/re-start pendant le chargement
+    this.pack = cfg.img;
+    this.previewAnims = cfg.preview || null;           // liste curée pour le panneau debug (sinon : toutes les clés d'anims)
+    if(cfg.anims){ this.anims = cfg.anims; }           // table d'animations fournie en dur (pack à noms personnalisés, ex. Umbreon)
+    else { await this.loadActions(cfg.conf); if(token!==this._token) return; }   // sinon : parse actions.xml au runtime (packs Shimeji standard)
+    if(!Object.keys(this.anims).length){ this.pack=null; return; }   // échec de chargement → on abandonne
+    this.preload(); this.build();
+    if(localStorage.getItem('mc_devlvl')) this.buildDebug();   // panneau de debug : en mode dev seulement (conservé pour brancher les prochaines mascottes)
+    this.x = innerWidth*0.5; this.y = innerHeight; this.vx=0; this.vy=0;
+    this.dir = Math.random()<0.5 ? -1 : 1;
+    this.toStand();
+    this.timer = setInterval(()=>this.tick(), 40);    // ~25 ticks/s, comme Shimeji
+  },
+  stop(){
+    this._token=(this._token||0)+1;                   // invalide tout start() en cours de chargement
+    if(this.timer){ clearInterval(this.timer); this.timer=null; }
+    if(this._onMove){ removeEventListener('pointermove', this._onMove); removeEventListener('pointerup', this._onUp); this._onMove=this._onUp=null; }
+    if(this.imgEl){ this.imgEl.remove(); this.imgEl=null; }
+    const dbg=document.getElementById('shimejiDbg'); if(dbg) dbg.remove();
+    this.pack=null; this.drag=false; this.anims={};
+  },
+  async loadActions(url){
+    this.anims={};
+    try{
+      const txt = await fetch(url).then(r=> r.ok ? r.text() : Promise.reject());
+      const doc = new DOMParser().parseFromString(txt, 'text/xml');
+      [...doc.getElementsByTagNameNS('*','Action')].forEach(a=>{   // robuste au namespace XML du pack
+        const name=a.getAttribute('Name'); if(!name) return;
+        const animEls=[...a.children].filter(c=>c.localName==='Animation');
+        if(!animEls.length) return;                    // on ne garde que les actions à animation directe
+        const variants=animEls.map(an=>[...an.children].filter(c=>c.localName==='Pose').map(p=>{
+          const an2=(p.getAttribute('ImageAnchor')||'64,128').split(',').map(Number);
+          const v  =(p.getAttribute('Velocity')||'0,0').split(',').map(Number);
+          return {img:(p.getAttribute('Image')||'').replace(/^\//,''), ax:an2[0]||64, ay:an2[1]||128,
+                  vx:v[0]||0, vy:v[1]||0, dur:Math.max(1, +(p.getAttribute('Duration')||8))};
+        })).filter(ps=>ps.length);
+        if(variants.length) this.anims[name]=variants;
+      });
+    }catch(e){ this.anims={}; }   // échec/parse vide → start() abandonne (les packs fournissent normalement leur table JS via cfg.anims)
+  },
+  preload(){
+    const seen={};
+    Object.values(this.anims).forEach(vs=>vs.forEach(ps=>ps.forEach(p=>{ if(!seen[p.img]){ seen[p.img]=1; const im=new Image(); im.src=encodeURI(this.pack+p.img); } })));   // encodeURI : noms de fichiers avec espaces
+  },
+  build(){
+    const img=document.createElement('img'); img.id='shimeji'; img.alt=''; img.draggable=false;
+    document.body.appendChild(img); this.imgEl=img;
+    img.addEventListener('pointerdown', e=>this.grab(e));
+    this._onMove=e=>this.move(e); this._onUp=e=>this.release(e);
+    addEventListener('pointermove', this._onMove); addEventListener('pointerup', this._onUp);
+  },
+  margin(){ return 64*this.S; },
+  setAnim(name, variant=0){ const a=this.anims[name]; if(!a) return false; this.anim=a[Math.min(variant,a.length-1)]; this.frame=0; this.ftick=0; this.curName=name; return true; },
+  anyAnim(...names){ for(const n of names){ if(this.setAnim(n)) return true; } return false; },
+  pose(){ return this.anim ? this.anim[this.frame] : null; },
+  stepFrame(apply){                                   // avance l'animation ; renvoie true à la fin d'un cycle
+    const p=this.pose(); if(!p) return false;
+    if(apply){ this.x += (this.dir===1 ? -p.vx : p.vx); this.y += p.vy; }
+    if(++this.ftick >= p.dur){ this.ftick=0; this.frame++; if(this.frame>=this.anim.length){ this.frame=0; return true; } }
+    return false;
+  },
+  toStand(){ this.state='stand'; this.anyAnim('Stand','Walk'); this.beh=40+(Math.random()*70|0); this.vx=0; this.vy=0; this.y=innerHeight; },
+  pick(){
+    const r=Math.random();
+    if(r<0.22) this.startWalk('Walk', false);
+    else if(r<0.34) this.startWalk('Run', false);
+    else if(r<0.42 && this.anims.Creep) this.startCreep();         // rampe (si le pack a Creep)
+    else if(r<0.56) this.standIdle();                             // animation sur place (Clin d'œil / Kick / Show Bottom…)
+    else if(r<0.72) this.startSit();                              // assis (+ sous-animations)
+    else if(r<0.82){ this.state='lie'; this.anyAnim('Sprawl','Sit','Stand'); this.beh=80+(Math.random()*140|0); }   // dort
+    else if(r<0.90 && this.anims.Jumping) this.startJump();        // petit saut
+    else this.startWalk('Walk', true);                            // marche vers un mur puis grimpe (et parfois jusqu'au plafond)
+  },
+  // Animation « sur place » ponctuelle, choisie parmi les bonus disponibles du perso, puis retour debout.
+  standIdle(){
+    const opts=['Wink','Kick','ShowBottom'].filter(n=>this.anims[n]);
+    if(!opts.length){ this.toStand(); return; }
+    this.playOnce(opts[Math.random()*opts.length|0], this.toStand);
+  },
+  // Joue une animation une seule fois puis exécute `then` (sinon retombe debout). Pour les gestes ponctuels.
+  playOnce(name, then){ if(!this.setAnim(name)){ (then||this.toStand).call(this); return; } this.state='oneshot'; this._then=then; },
+  startCreep(){
+    this.state='creep'; this.thenClimb=false;
+    this.targetX = this.margin()+Math.random()*(innerWidth-2*this.margin());
+    this.dir = this.targetX<this.x?-1:1;
+    this.anyAnim('Creep','Walk','Stand'); this.beh=300;
+  },
+  startSit(){ this.state='sit'; this.anyAnim('Sit','Stand'); this.beh=60+(Math.random()*120|0); },
+  // Assis : de temps en temps une petite sous-animation, puis on se rassoit.
+  sitFidget(){
+    if(this.anims.SitAndDangleLegs && Math.random()<0.35){ this.startDangle(); return; }   // pack standard
+    const opts=['Sit2','SitFidget','SitAndSpinHeadAction'].filter(n=>this.anims[n]);
+    if(this.anims.SitAndLookUp) opts.push('LookUp');
+    if(!opts.length){ this.startSit(); return; }
+    const n=opts[Math.random()*opts.length|0];
+    if(n==='LookUp'){ this.setAnim('SitAndLookUp'); this.state='sit'; this.beh=30+(Math.random()*50|0); }
+    else this.playOnce(n, this.startSit);
+  },
+  // Maintient une pose figée un court instant (ticks) puis enchaîne — pour les poses statiques (jambes remontées…).
+  hold(name, ticks, then){ if(!this.setAnim(name)){ (then||this.toStand).call(this); return; } this.state='hold'; this._hold=ticks; this._then=then; },
+  // Balance les jambes : remonte les jambes (shime30) → balance (shime31-33) → repose → se rassoit.
+  startDangle(){ this.hold('SitWithLegsUp', 8, ()=>this.dangleLoop(2+(Math.random()*2|0))); },
+  dangleLoop(n){ this.playOnce('SitAndDangleLegs', ()=>{ if(n>1) this.dangleLoop(n-1); else this.hold('SitWithLegsDown', 12, ()=>this.hold('SitWithLegsUp', 8, this.startSit)); }); },
+  startJump(){ this.anyAnim('Jumping','Falling','Stand'); this.state='fall'; this.vy=-14; this.vx=(Math.random()<0.5?-1:1)*(2+Math.random()*3); this.dir=this.vx<0?-1:1; },
+  startCeilWalk(){
+    this.state='ceilwalk'; this.y=this.margin();
+    this.targetX = this.margin()+Math.random()*(innerWidth-2*this.margin());
+    this.dir = this.targetX<this.x?-1:1;
+    this.anyAnim('ClimbCeiling','GrabCeiling','Stand'); this.beh=300;
+  },
+  startWalk(name, climb){
+    this.state = name==='Run' ? 'run' : 'walk';
+    if(climb){ const left=Math.random()<0.5; this.targetX = left? this.margin() : innerWidth-this.margin(); this.dir = left?-1:1; this.thenClimb=true; }
+    else { this.targetX = this.margin()+Math.random()*(innerWidth-2*this.margin()); this.dir = this.targetX<this.x?-1:1; this.thenClimb=false; }
+    this.anyAnim(name,'Walk','Stand'); this.beh=250;  // sécurité ~10 s
+  },
+  beginClimb(wall){   // art natif = mur gauche (dir -1 = pas de flip)
+    this.state='climb'; this.dir = wall; this.anyAnim('ClimbWall','Stand'); this.thenClimb=false;
+    this.toCeiling = Math.random()<0.4 && !!(this.anims.GrabCeiling||this.anims.ClimbCeiling);   // parfois grimper jusqu'au plafond
+    this.climbY = this.toCeiling ? this.margin() : innerHeight*(0.15+Math.random()*0.35);
+    this.beh=600;
+  },
+  letGo(){ this.state='fall'; this.anyAnim('Falling','Fall','Stand'); this.vx = -this.dir*3; this.vy=0; },   // poussé loin du mur
+  tick(){
+    const vw=innerWidth, vh=innerHeight;
+    if(this.drag){   // tenu à la souris : reste sur la pose figée, ne se débat que par à-coups (toutes les quelques secondes)
+      if(this._struggle>0){ if(this.curName!=='Resisting') this.setAnim('Resisting'); this.stepFrame(false); this._struggle--; }
+      else { if(this.curName!=='Pinched') this.setAnim('Pinched');
+             if(this.anims.Resisting && --this._nextStruggle<=0){ this._struggle=22; this._nextStruggle=30+(Math.random()*60|0); } }
+      this.render(); return;
+    }
+    switch(this.state){
+      case 'stand': case 'lie':
+        this.stepFrame(false); if(--this.beh<=0) this.pick(); break;
+      case 'sit':
+        this.stepFrame(false);
+        if(--this.beh<=0){
+          if(Math.random()<0.55 && (this.anims.Sit2||this.anims.SitFidget||this.anims.SitAndSpinHeadAction||this.anims.SitAndDangleLegs||this.anims.SitAndLookUp)) this.sitFidget();
+          else this.pick();
+        }
+        break;
+      case 'oneshot':                                   // joue une anim une fois puis enchaîne (geste ponctuel)
+        if(this.stepFrame(false)){ const t=this._then; this._then=null; (t||this.toStand).call(this); }
+        break;
+      case 'hold':                                      // maintient une pose figée un court instant puis enchaîne
+        this.stepFrame(false); if(--this._hold<=0){ const t=this._then; this._then=null; (t||this.toStand).call(this); }
+        break;
+      case 'walk': case 'run': case 'creep': {
+        if(this.state==='run' && Math.random()<0.004 && this.anims.Tripping){ this.playOnce('Tripping', this.toStand); break; }   // trébuche parfois en courant
+        this.stepFrame(true); const mg=this.margin();
+        if(this.x<=mg){ this.x=mg; if(this.thenClimb){ this.beginClimb(-1); break; } this.dir=1; }
+        else if(this.x>=vw-mg){ this.x=vw-mg; if(this.thenClimb){ this.beginClimb(1); break; } this.dir=-1; }
+        else if(!this.thenClimb && Math.abs(this.x-this.targetX)<=3){ this.toStand(); break; }
+        if(this.y<vh) this.y=vh;
+        if(--this.beh<=0) this.toStand();
+        break;
+      }
+      case 'climb':
+        this.stepFrame(false); this.y -= 1.6;
+        if(this.y<=this.climbY){
+          if(this.toCeiling) this.startCeilWalk();      // arrivé en haut → marche au plafond
+          else { this.state='hang'; this.anyAnim('GrabWall','Stand'); this.beh=30+(Math.random()*60|0); }
+        }
+        else if(--this.beh<=0) this.letGo();
+        break;
+      case 'hang':
+        this.stepFrame(false); if(--this.beh<=0) this.letGo(); break;
+      case 'ceilwalk': {                                // se déplace accroché au plafond
+        this.stepFrame(false); const mg=this.margin();
+        this.x += this.dir*2; this.y = mg;
+        if(this.x<=mg){ this.x=mg; this.dir=1; }
+        else if(this.x>=vw-mg){ this.x=vw-mg; this.dir=-1; }
+        else if(Math.abs(this.x-this.targetX)<=3 || --this.beh<=0){ this.state='ceilhang'; this.anyAnim('GrabCeiling','Stand'); this.beh=30+(Math.random()*70|0); }
+        break;
+      }
+      case 'ceilhang':                                  // accroché immobile au plafond, puis lâche
+        this.stepFrame(false); if(--this.beh<=0){ this.state='fall'; this.anyAnim('Falling','Fall','Stand'); this.vx=0; this.vy=0; } break;
+      case 'fall': {
+        this.stepFrame(false);
+        this.vy = this.vy*0.9 + 2; this.vx *= 0.95; this.x += this.vx; this.y += this.vy;
+        const mg=this.margin();
+        if(this.x<=mg){ this.x=mg; this.vx=Math.abs(this.vx)*0.5; }
+        else if(this.x>=vw-mg){ this.x=vw-mg; this.vx=-Math.abs(this.vx)*0.5; }
+        if(this.y>=vh){ this.y=vh; if(this.vy>6 && this.anims.Bouncing){ this.state='bounce'; this.setAnim('Bouncing'); } else this.toStand(); }
+        break;
+      }
+      case 'bounce':
+        if(this.stepFrame(false)) this.toStand(); break;
+      case 'preview':                                   // debug : joue l'anim choisie en boucle, sur place
+        this.stepFrame(false); break;
+    }
+    this.render();
+  },
+  render(){
+    const p=this.pose(); if(!p||!this.imgEl) return;
+    const S=this.S;
+    if(this.imgEl.dataset.img!==p.img){ this.imgEl.src=encodeURI(this.pack+p.img); this.imgEl.dataset.img=p.img; }
+    this.imgEl.style.width=((p.w||this.F)*S)+'px'; this.imgEl.style.height=((p.h||this.F)*S)+'px';   // taille native par pose (sprites non carrés : escalade)
+    this.imgEl.style.left=(this.x - p.ax*S)+'px';
+    this.imgEl.style.top =(this.y - p.ay*S)+'px';
+    this.imgEl.style.transform = this.dir===1 ? 'scaleX(-1)' : '';
+  },
+  grab(e){ e.preventDefault(); this.drag=true; this.anyAnim('Pinched','Resisting','Stand'); this._struggle=0; this._nextStruggle=25+(Math.random()*45|0); this.cx=e.clientX; this.cy=e.clientY; this.cvx=0; this.cvy=0; this.gdx=e.clientX-this.x; this.gdy=e.clientY-this.y; this.render(); },   // gdx/gdy = point de saisie conservé
+  move(e){ if(!this.drag) return; this.cvx=e.clientX-this.cx; this.cvy=e.clientY-this.cy; this.cx=e.clientX; this.cy=e.clientY; this.x=e.clientX-this.gdx; this.y=e.clientY-this.gdy; this.render(); },
+  release(){ if(!this.drag) return; this.drag=false; this.vx=Math.max(-45,Math.min(45,this.cvx)); this.vy=Math.max(-45,Math.min(45,this.cvy)); this.state='fall'; this.anyAnim('Falling','Fall','Stand'); },
+  // ---- Panneau de debug (tester chaque animation / état à la main) ----
+  buildDebug(){
+    const old=document.getElementById('shimejiDbg'); if(old) old.remove();
+    // Comportements : base + entrées conditionnelles selon les animations réellement présentes dans le pack.
+    const beh=[['auto','▶ Auto','sd-auto'],['stand','Debout'],['walk','Marche'],['run','Course']];
+    if(this.anims.Creep) beh.push(['creep','Rampe']);
+    beh.push(['sit','Assis'],['lie','Allongé'],['jump','Saut']);
+    if(this.anims.Tripping) beh.push(['trip','Trébuche']);
+    beh.push(['climb','Grimper'],['ceiling','Plafond'],['fall','Tomber']);
+    if(this.anims.Wink) beh.push(['wink',"Clin d'œil"]);
+    if(this.anims.Kick) beh.push(['kick','Kick']);
+    if(this.anims.ShowBottom) beh.push(['showbottom','Show Bottom']);
+    // Aperçu d'animations : liste curée du pack si fournie, sinon toutes les clés.
+    const anims = this.previewAnims || Object.keys(this.anims).sort().map(n=>[n,n]);
+    const p=document.createElement('div'); p.id='shimejiDbg';
+    p.innerHTML=`<div class="sd-h">🧪 Shimeji debug <button class="sd-x" data-act="close">✕</button></div>
+      <div class="sd-row">${beh.map(([k,l,c])=>`<button data-beh="${k}"${c?` class="${c}"`:''}>${l}</button>`).join('')}</div>
+      <div class="sd-lbl">Animations (${anims.length}) — clic = jouer en boucle :</div>
+      <div class="sd-anims">${anims.map(([k,l])=>`<button data-anim="${k}">${l}</button>`).join('')}</div>`;
+    document.body.appendChild(p);
+    p.querySelectorAll('[data-anim]').forEach(b=>b.onclick=()=>{ this.preview(b.dataset.anim); this.markDbg(b); });
+    p.querySelectorAll('[data-beh]').forEach(b=>b.onclick=()=>{ this.dbgBeh(b.dataset.beh); this.markDbg(b); });
+    p.querySelector('[data-act=close]').onclick=()=>p.remove();
+  },
+  markDbg(btn){ const p=document.getElementById('shimejiDbg'); if(p) p.querySelectorAll('button').forEach(b=>b.classList.toggle('sd-on', b===btn)); },
+  preview(name){ this.drag=false; this.state='preview'; this.setAnim(name); this.y=innerHeight; this.vx=0; this.vy=0; },
+  dbgBeh(b){
+    this.drag=false;
+    if(b==='auto'||b==='stand') this.toStand();
+    else if(b==='walk') this.startWalk('Walk', false);
+    else if(b==='run') this.startWalk('Run', false);
+    else if(b==='creep') this.startCreep();
+    else if(b==='sit'){ this.state='sit'; this.anyAnim('Sit','Stand'); this.beh=1e9; }
+    else if(b==='lie'){ this.state='lie'; this.anyAnim('Sprawl','Sit','Stand'); this.beh=1e9; }
+    else if(b==='jump') this.startJump();
+    else if(b==='wink'){ this.y=innerHeight; this.playOnce('Wink', this.toStand); }
+    else if(b==='kick'){ this.y=innerHeight; this.playOnce('Kick', this.toStand); }
+    else if(b==='showbottom'){ this.y=innerHeight; this.playOnce('ShowBottom', this.toStand); }
+    else if(b==='trip'){ this.x=innerWidth*0.5; this.y=innerHeight; this.playOnce('Tripping', this.toStand); }
+    else if(b==='climb'){ this.x=this.margin(); this.y=innerHeight; this.beginClimb(-1); this.toCeiling=false; this.climbY=innerHeight*0.3; this.beh=1e9; }
+    else if(b==='ceiling'){ this.x=innerWidth*0.5; this.startCeilWalk(); }
+    else if(b==='fall'){ this.x=innerWidth*0.5; this.y=innerHeight*0.2; this.state='fall'; this.anyAnim('Falling','Fall','Stand'); this.vx=0; this.vy=0; }
+  },
+};
+// Applique la bannière derrière le header (zone recherche/filtres) : VIDÉO animée pour les presets,
+// image fixe pour une bannière perso uploadée, rien sinon. Voile assuré par header.has-banner::after.
+function applyHeaderBanner(){
+  const hd = document.querySelector('header'); if(!hd) return;
+  const vid = document.getElementById('bannerVidH');
+  hd.classList.remove('has-banner'); hd.style.backgroundImage=''; hd.style.backgroundSize=''; hd.style.backgroundPosition='';
+  if(vid){ vid.style.display='none'; if(vid.getAttribute('src')){ vid.removeAttribute('src'); vid.load(); } }
+  const b = PROFILE.cfg.banner;
+  if(b==='custom' && PROFILE.cfg.bannerImg){
+    hd.style.backgroundImage=`url("${PROFILE.cfg.bannerImg}")`; hd.style.backgroundSize='cover'; hd.style.backgroundPosition='center';
+    hd.classList.add('has-banner');
+  } else {
+    const p = BG_PRESETS.find(x=>x.id===b);
+    if(p && vid){ vid.muted=true; vid.loop=true; vid.playsInline=true; vid.src=p.file; vid.style.display='block'; if(vid.play) vid.play().catch(()=>{}); hd.classList.add('has-banner'); }
+  }
+}
 function renderHeaderProfile(){
+  enforceUnlocks();
+  applyHeaderBanner();
+  applyParticles();
+  applyMascot();
   const P = computeXP(), av = $('#hpAvatar'), lv = $('#hpLvl'), nm = $('#hpName');
-  if(av) av.innerHTML = PROFILE.cfg.pic ? `<img src="${PROFILE.cfg.pic}" alt="">` : '👤';
+  if(av){ av.innerHTML = PROFILE.cfg.pic ? `<img src="${PROFILE.cfg.pic}" alt="">` : '👤'; av.className = 'hp-avatar av-'+(PROFILE.cfg.frame||'none'); }
   if(lv) lv.textContent = 'Niv.'+P.level;
-  if(nm){ const name = (PROFILE.cfg.name||'').trim(); nm.textContent = name; nm.style.display = name ? '' : 'none'; }
+  if(nm){ const name = (PROFILE.cfg.name||'').trim(); nm.textContent = name; nm.style.display = name ? '' : 'none';
+    nm.className = 'hp-name ' + nameFxClass(PROFILE.cfg.nameFx); }
+}
+// Effet de bandeau selon le rang (auto par niveau)
+function rankClass(lvl){
+  if(lvl>=50) return 'rank-gold';
+  if(lvl>=30) return 'rank-shimmer';
+  if(lvl>=20) return 'rank-border';
+  if(lvl>=10) return 'rank-shine';
+  return '';
 }
 function profileBanner(){
   const P = computeXP(), pic = PROFILE.cfg.pic, pctL = P.need ? Math.round(P.into/P.need*100) : 0;
-  return `<div class="profile-box">
+  const b = PROFILE.cfg.banner; let banClass='', banAttr='', banMedia='';
+  if(b==='custom' && PROFILE.cfg.bannerImg){
+    banClass=' has-banner';
+    banAttr=` style="background-image:url('${PROFILE.cfg.bannerImg}'); background-size:cover; background-position:center"`;
+  } else {
+    const p = BG_PRESETS.find(x=>x.id===b);
+    if(p){ banClass=' has-banner'; banMedia=`<video class="banner-vid" autoplay muted loop playsinline src="${p.file}"></video>`; }
+  }
+  return `<div class="profile-box ${rankClass(P.level)}${banClass}"${banAttr}>${banMedia}
     <button class="profile-pic" id="profilePic" title="Changer la photo">
-      <span class="pp-img">${pic ? `<img src="${pic}" alt="">` : '👤'}</span><span class="lvl">Niv.${P.level}</span>
+      <span class="pp-img av-${PROFILE.cfg.frame||'none'}">${pic ? `<img src="${pic}" alt="">` : '👤'}</span><span class="lvl">Niv.${P.level}</span>
     </button>
     <div class="profile-main">
-      <input class="profile-name" id="profileName" maxlength="24" value="${escapeHtml(PROFILE.cfg.name||'')}" placeholder="Ton pseudo">
+      <input class="profile-name ${nameFxClass(PROFILE.cfg.nameFx)}" id="profileName" maxlength="24" value="${escapeHtml(PROFILE.cfg.name||'')}" placeholder="Ton pseudo">
       <div class="profile-title">${levelTitle(P.level)}</div>
       <div class="level-line"><span>Niveau ${P.level}</span><span>${P.into} / ${P.need} XP</span></div>
       <div class="level-bar"><i style="width:${pctL}%"></i></div>
@@ -2588,6 +3318,65 @@ function openStats(){
         <div class="bi">${b.icon}</div><div class="bl">${escapeHtml(b.label)}</div>
       </div>`).join('')}</div>`);
 
+  // 🖼️ Cadres d'avatar (récompenses débloquées par niveau)
+  const lvlNow = computeXP().level;
+  h.push(`<div class="stat-h">🖼️ Cadres d'avatar</div>
+    <div class="frames-grid">${FRAMES.map(f=>{
+      const ok = lvlNow>=f.lvl, sel = (PROFILE.cfg.frame||'none')===f.id;
+      return `<button class="frame-it${ok?'':' locked'}${sel?' sel':''}" data-frame="${f.id}"${ok?'':' disabled'}>
+        <span class="frame-av av-${f.id}">👤</span>
+        <span class="frame-lbl">${f.name}${ok?'':'<br>niv. '+f.lvl}</span>
+      </button>`;
+    }).join('')}</div>`);
+
+  // ✨ Pseudo animé (effet sur le nom, débloqué par niveau)
+  h.push(`<div class="stat-h">✨ Pseudo animé</div>
+    <div class="frames-grid">${NAME_FX.map(f=>{
+      const ok = lvlNow>=f.lvl, sel = (PROFILE.cfg.nameFx||'none')===f.id;
+      return `<button class="frame-it${ok?'':' locked'}${sel?' sel':''}" data-namefx="${f.id}"${ok?'':' disabled'}>
+        <span class="namefx-prev ${nameFxClass(f.id)}">Aa</span>
+        <span class="frame-lbl">${f.name}${ok?'':'<br>niv. '+f.lvl}</span>
+      </button>`;
+    }).join('')}</div>`);
+
+  // 💫 Particules d'ambiance (couche flottante débloquée par niveau)
+  h.push(`<div class="stat-h">💫 Particules d'ambiance</div>
+    <div class="frames-grid">${PARTICLES.map(p=>{
+      const ok = lvlNow>=p.lvl, sel = (PROFILE.cfg.particles||'none')===p.id;
+      return `<button class="frame-it${ok?'':' locked'}${sel?' sel':''}" data-particles="${p.id}"${ok?'':' disabled'}>
+        <span class="pcl-prev">${p.emoji||'∅'}</span>
+        <span class="frame-lbl">${p.name}${ok?'':'<br>niv. '+p.lvl}</span>
+      </button>`;
+    }).join('')}</div>`);
+
+  // 🐾 Mascotte / compagnon de bureau (se balade en bas de l'écran, débloquée par niveau)
+  h.push(`<div class="stat-h">🐾 Mascotte</div>
+    <div class="frames-grid">${MASCOTS.filter(p=>!p.dev || localStorage.getItem('mc_devlvl')).map(p=>{
+      const ok = lvlNow>=p.lvl, sel = (PROFILE.cfg.mascot||'none')===p.id;
+      const prev = p.icon ? `<img src="${p.icon}" alt="">` : (p.emoji||'∅');
+      return `<button class="frame-it${ok?'':' locked'}${sel?' sel':''}" data-mascot="${p.id}"${ok?'':' disabled'}>
+        <span class="mascot-prev">${prev}</span>
+        <span class="frame-lbl">${p.name}${ok?'':'<br>niv. '+p.lvl}</span>
+      </button>`;
+    }).join('')}</div>`);
+  // Modèle alternatif : si la mascotte équipée a plusieurs skins (ex. Shimeji Normal / Shiny), bouton pour basculer.
+  const selM = MASCOTS.find(x=>x.id===(PROFILE.cfg.mascot||'none'));
+  if(selM && selM.skins && selM.skins.length>1){
+    const si = PROFILE.cfg.mascotSkin||0;
+    h.push(`<div class="dev-row"><button class="dev-btn" id="mascotModeBtn">🎨 Modèle : ${selM.skins[si].name}</button></div>`);
+  }
+
+  // 🪪 Bannière de profil (image fixe : perso uploadée, ou un fond anime). Affichée sur la carte profil ET derrière le header.
+  h.push(`<div class="stat-h">🪪 Bannière de profil</div>
+    <div class="bg-grid">${[{id:'',name:'Aucune',lvl:1}, {id:'custom',name:'📁 Perso',lvl:1}, ...BG_PRESETS].map(p=>{
+      const ok = !p.lvl || lvlNow>=p.lvl, sel = (PROFILE.cfg.banner||'')===p.id;
+      const prev = p.id==='custom' ? (PROFILE.cfg.bannerImg ? `center/cover url('${PROFILE.cfg.bannerImg}')` : 'var(--bg2)')
+                 : p.file ? `center/cover url('${p.file.replace('.mp4','.jpg')}')` : 'var(--bg2)';
+      return `<button class="bg-it${ok?'':' locked'}${sel?' sel':''}" data-banner="${p.id}" data-lvl="${p.lvl||1}">
+        <span class="bg-prev" style="background:${prev}"></span>${ok?'':'<span class="bg-lock">🔒</span>'}
+        <span class="bg-name">${p.name}${ok?'':' · '+p.lvl}</span></button>`;
+    }).join('')}</div>`);
+
   // 🎯 Objectif annuel (réglable, stocké en local) — basé sur les fiches terminées datées cette année
   const year = new Date().getFullYear();
   const goal = +localStorage.getItem('mc_goal') || 0;
@@ -2622,11 +3411,68 @@ function openStats(){
   const topPlat = Object.entries(platCount).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([p,c])=>({label:escapeHtml(p), n:c}));
   if(topPlat.length) h.push(`<div class="stat-h">Top plateformes</div>${bars(topPlat)}`);
 
+  // 🔧 Outil dev (toggle protégé par mot de passe) : force le niveau pour tester les déblocages
+  const devOn = !!localStorage.getItem('mc_devlvl'), devLvl = +localStorage.getItem('mc_devlvl')||0;
+  h.push(`<div class="dev-row">
+    <button class="dev-btn${devOn?' on':''}" id="devBtn">🔧 Dev : ${devOn?'ON':'OFF'}</button>
+    ${devOn?`<label class="dev-set">Niveau <input type="number" id="devLvl" min="1" max="99" value="${devLvl}"></label>`:''}
+  </div>`);
+
   $('#statsBody').innerHTML = h.join('');
   wireProfile();
   const gi = $('#statGoal');
   if(gi) gi.onchange = ()=>{ localStorage.setItem('mc_goal', String(Math.max(0, +gi.value||0))); openStats(); };
+  $('#statsBody').querySelectorAll('[data-frame]:not(.locked)').forEach(b=>b.onclick=()=>{
+    PROFILE.cfg.frame = b.dataset.frame; PROFILE.cfg.updated = Date.now(); PROFILE.store();
+    renderHeaderProfile(); afterChange(); openStats();
+  });
+  $('#statsBody').querySelectorAll('[data-namefx]:not(.locked)').forEach(b=>b.onclick=()=>{
+    PROFILE.cfg.nameFx = b.dataset.namefx; PROFILE.cfg.updated = Date.now(); PROFILE.store();
+    renderHeaderProfile(); afterChange(); openStats();
+  });
+  $('#statsBody').querySelectorAll('[data-particles]:not(.locked)').forEach(b=>b.onclick=()=>{
+    PROFILE.cfg.particles = b.dataset.particles; PROFILE.cfg.updated = Date.now(); PROFILE.store();
+    renderHeaderProfile(); afterChange(); openStats();
+  });
+  $('#statsBody').querySelectorAll('[data-mascot]:not(.locked)').forEach(b=>b.onclick=()=>{
+    PROFILE.cfg.mascot = b.dataset.mascot; PROFILE.cfg.updated = Date.now(); PROFILE.store();
+    renderHeaderProfile(); afterChange(); openStats();
+  });
+  const mmb = $('#mascotModeBtn'); if(mmb) mmb.onclick = ()=>{
+    const sm = MASCOTS.find(x=>x.id===(PROFILE.cfg.mascot||'none'));
+    if(!sm || !sm.skins) return;
+    PROFILE.cfg.mascotSkin = ((PROFILE.cfg.mascotSkin||0)+1) % sm.skins.length;
+    PROFILE.cfg.updated = Date.now(); PROFILE.store();
+    renderHeaderProfile(); afterChange(); openStats();
+  };
+  $('#statsBody').querySelectorAll('[data-banner]').forEach(b=>b.onclick=()=>{
+    if(b.classList.contains('locked')){ toast('🔒 Débloqué au niveau '+b.dataset.lvl); return; }
+    if(b.dataset.banner==='custom'){ $('#bannerImgInput').click(); return; }   // perso → choisir une image
+    PROFILE.cfg.banner = b.dataset.banner; PROFILE.cfg.updated = Date.now(); PROFILE.store(); renderHeaderProfile(); afterChange(); openStats();
+  });
+  const db = $('#devBtn'); if(db) db.onclick = devToggle;
+  const dl = $('#devLvl'); if(dl) dl.onchange = ()=>devSetLevel(dl.value);
   $('#statsOverlay').classList.add('open');
+}
+// Outil dev (toggle, mot de passe 2003). Active/désactive un niveau forcé pour tester les déblocages.
+// N'altère JAMAIS le vrai XP : à la désactivation, le niveau réel revient et la baseline level-up est resynchronisée.
+function devToggle(){
+  if(prompt('🔒 Mot de passe dev :') !== '2003'){ toast('❌ Mauvais mot de passe'); return; }
+  if(localStorage.getItem('mc_devlvl')){                 // était ON → on désactive
+    localStorage.removeItem('mc_devlvl');
+    localStorage.setItem('mc_lastlvl', String(computeXP().level));   // resync : pas de faux level-up au retour au réel
+    toast('🔧 Mode dev désactivé');
+  } else {                                                // était OFF → on active au niveau réel actuel
+    localStorage.setItem('mc_devlvl', String(computeXP().level));
+    toast('🔧 Mode dev activé');
+  }
+  renderHeaderProfile(); openStats();
+}
+function devSetLevel(v){
+  if(!localStorage.getItem('mc_devlvl')) return;          // ignoré si le mode dev n'est pas actif
+  const n = Math.min(99, Math.max(1, parseInt(v,10)||1));
+  localStorage.setItem('mc_devlvl', String(n));
+  renderHeaderProfile(); openStats();
 }
 
 // Affiche/masque les sections + le bouton 🔄 selon le mode
@@ -2773,6 +3619,13 @@ function bind(){
     if(e.target.files[0]){
       PROFILE.cfg.pic = await compress(e.target.files[0], 256, .85);   // petit avatar
       PROFILE.cfg.updated = Date.now(); PROFILE.store(); renderHeaderProfile(); afterChange(); openStats();
+    }
+    e.target.value='';
+  };
+  $('#bannerImgInput').onchange = async e=>{
+    if(e.target.files[0]){
+      PROFILE.cfg.bannerImg = await compress(e.target.files[0], 900, .8);   // bannière perso (image fixe)
+      PROFILE.cfg.banner = 'custom'; PROFILE.cfg.updated = Date.now(); PROFILE.store(); renderHeaderProfile(); afterChange(); openStats();
     }
     e.target.value='';
   };
@@ -2926,6 +3779,7 @@ function bind(){
   PROFILE.load();                      // pseudo + photo de profil (niveau/XP)
   render();
   checkBadges();                       // baseline des badges (silencieuse au 1er lancement)
+  checkLevelUp();                      // baseline du niveau (pas de confettis au 1er lancement)
   // Mode de sauvegarde
   SYNC.load();
   await LOCAL.restore();
