@@ -328,6 +328,21 @@
   .heat-detail-h{font-size:13px; font-weight:700; text-transform:capitalize; margin-bottom:6px}
   .heat-detail-list{list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:5px}
   .heat-detail-list li{background:var(--card); border:1px solid var(--line); border-radius:8px; padding:7px 10px; font-size:13px}
+  /* ---------- Calendrier des sorties ---------- */
+  .cal-banner{font-size:12.5px; border-radius:9px; padding:8px 12px; margin-bottom:12px}
+  .cal-banner.off{background:color-mix(in srgb, var(--bad) 16%, var(--card)); border:1px solid color-mix(in srgb, var(--bad) 40%, var(--line)); color:var(--txt)}
+  .cal-banner.ok{background:var(--card); border:1px solid var(--line); color:var(--txt-dim)}
+  .cal-row{display:flex; gap:12px; align-items:center; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px 10px; margin:7px 0; cursor:pointer; transition:.15s}
+  .cal-row:hover{border-color:var(--accent); transform:translateX(2px)}
+  .cal-thumb{flex:0 0 auto; width:46px; height:62px; border-radius:7px; overflow:hidden; background:var(--bg2)}
+  .cal-thumb img{width:100%; height:100%; object-fit:cover; display:block}
+  .cal-ph{width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-weight:800; color:var(--txt-dim)}
+  .cal-main{min-width:0}
+  .cal-title{font-weight:700; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .cal-sub{font-size:12.5px; color:var(--txt); margin-top:3px}
+  .cal-ep{font-weight:700; color:var(--accent-2)}
+  .cal-rel{color:var(--txt-dim)}
+  .cal-muted{color:var(--txt-dim); font-style:italic}
   /* ---------- Profil + Niveau/XP ---------- */
   .profile-box{display:flex; gap:14px; align-items:center; border-radius:16px; padding:16px; margin-bottom:18px;
     color:#fff; background:linear-gradient(135deg,var(--accent),var(--accent-2))}
@@ -541,6 +556,7 @@
     <button class="btn btn-icon" id="syncBtn" title="Synchroniser maintenant"><span id="syncDot" class="sync-dot off"></span>🔄</button>
     <button class="btn btn-icon" id="localSaveBtn" title="Télécharger la sauvegarde" style="display:none">💾</button>
     <button class="btn btn-icon" id="randomBtn" title="Je regarde quoi ?">🎲</button>
+    <button class="btn btn-icon" id="calendarBtn" title="Calendrier des sorties">📅</button>
     <button class="btn btn-icon" id="themeBtn" title="Apparence">🎨</button>
     <button class="btn btn-icon" id="settingsBtn" title="Paramètres">⚙️</button>
     <button class="btn btn-primary" id="addBtn">＋ Ajouter</button>
@@ -861,6 +877,18 @@
         <button class="btn" id="wrappedNext" type="button" title="Année suivante">→</button>
       </div>
       <div class="right"><button class="btn btn-primary" id="closeWrapped2">Fermer</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Calendrier des sorties -->
+<div class="overlay" id="calendarOverlay">
+  <div class="modal">
+    <h2><span>📅 Calendrier des sorties</span><button class="x" id="closeCalendar">✕</button></h2>
+    <div id="calendarBody"></div>
+    <div class="modal-actions">
+      <div class="left"><button class="btn" id="calRefresh" type="button">🔄 Actualiser</button></div>
+      <div class="right"><button class="btn btn-primary" id="closeCalendar2">Fermer</button></div>
     </div>
   </div>
 </div>
@@ -1767,6 +1795,85 @@ function renderWrapped(){
   $('#wrappedPrev').style.visibility = idx>0 ? 'visible' : 'hidden';
   $('#wrappedNext').style.visibility = idx<years.length-1 ? 'visible' : 'hidden';
 }
+
+// =========================================================
+//  CALENDRIER DES SORTIES — affichage (données : RELEASES, offline-first)
+// =========================================================
+function timeAgo(ts){
+  if(!ts) return '';
+  const s=Math.floor((Date.now()-ts)/1000);
+  if(s<60) return "à l'instant";
+  const m=Math.floor(s/60); if(m<60) return `il y a ${m} min`;
+  const hh=Math.floor(m/60); if(hh<24) return `il y a ${hh} h`;
+  return `il y a ${Math.floor(hh/24)} j`;
+}
+function relDay(d, today){
+  const days=Math.round((d-today)/86400000);
+  if(days===0) return "(aujourd'hui)"; if(days===1) return '(demain)';
+  if(days>1) return `(dans ${days} j)`; if(days===-1) return '(hier)';
+  return `(il y a ${-days} j)`;
+}
+async function openCalendar(){
+  RELEASES.load();
+  $('#calendarOverlay').classList.add('open');
+  renderCalendar();                                   // affiche le cache tout de suite (marche hors-ligne)
+  if(navigator.onLine && (Date.now()-RELEASES.last > 3*3600*1000)) await doCalRefresh();   // actualise si en ligne + cache > 3 h
+}
+async function doCalRefresh(){
+  const btn=$('#calRefresh');
+  if(!navigator.onLine){ RELEASES.offline=true; renderCalendar(); return; }
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Actualisation…'; }
+  await RELEASES.refresh();
+  if(btn){ btn.disabled=false; btn.textContent='🔄 Actualiser'; }
+  renderCalendar();
+}
+function renderCalendar(){
+  const body=$('#calendarBody'); if(!body) return;
+  const online=navigator.onLine, rel=RELEASES.relevant();
+  const h=[];
+  if(!online) h.push(`<div class="cal-banner off">📡 Hors ligne — dernier cache${RELEASES.last?` ${timeAgo(RELEASES.last)}`:' indisponible'}.</div>`);
+  else if(RELEASES.last) h.push(`<div class="cal-banner ok">✅ Mis à jour ${timeAgo(RELEASES.last)}.</div>`);
+  if(!rel.length){
+    h.push(`<p class="help">Aucun anime / série « En cours » lié à une fiche en ligne. Mets une fiche en <b>En cours</b> et ajoute-la via la <b>recherche en ligne</b> (anime ou série) pour suivre ses sorties.</p>`);
+    body.innerHTML=h.join(''); return;
+  }
+  const today=new Date(); today.setHours(0,0,0,0);
+  const rows = rel.map(it=>{
+    const c=RELEASES.cache[it.id]||{status:'none'}; let d=null;
+    if(c.date){ const [y,m,dd]=c.date.split('-').map(Number); d=new Date(y,m-1,dd); }
+    return {it, c, d};
+  }).sort((a,b)=> (a.d?+a.d:Infinity) - (b.d?+b.d:Infinity));
+  const g={retard:[], today:[], semaine:[], plus:[], inconnu:[]};
+  const weekEnd=new Date(today); weekEnd.setDate(weekEnd.getDate()+7);
+  for(const r of rows){
+    if(!r.d) g.inconnu.push(r);
+    else if(r.d<today) g.retard.push(r);
+    else if(+r.d===+today) g.today.push(r);
+    else if(r.d<=weekEnd) g.semaine.push(r);
+    else g.plus.push(r);
+  }
+  const rowHtml = r=>{
+    const it=r.it, c=r.c;
+    const img = it.image ? `<img src="${it.image}" alt="">` : `<div class="cal-ph">${((TYPES.find(t=>t.id===it.type)||{}).label||'?')[0]}</div>`;
+    let info;
+    if(c.status==='airing' && r.d){
+      const epTxt = c.season ? `S${c.season}E${c.ep}` : (c.ep?`Ép. ${c.ep}`:'Prochain épisode');
+      info = `<span class="cal-ep">${epTxt}</span> · ${r.d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})} <span class="cal-rel">${relDay(r.d,today)}</span>`;
+    } else if(c.status==='finished') info=`<span class="cal-muted">Diffusion terminée</span>`;
+    else if(c.status==='airing')     info=`<span class="cal-muted">En cours — prochaine date inconnue</span>`;
+    else                             info=`<span class="cal-muted">Pas d'info de diffusion</span>`;
+    return `<div class="cal-row" data-id="${it.id}"><div class="cal-thumb">${img}</div>
+      <div class="cal-main"><div class="cal-title">${escapeHtml(it.title)}</div><div class="cal-sub">${info}</div></div></div>`;
+  };
+  const sec=(title,arr)=> arr.length ? `<div class="stat-h">${title}</div>${arr.map(rowHtml).join('')}` : '';
+  h.push(sec('⏰ Disponible (à rattraper)', g.retard));
+  h.push(sec("📍 Aujourd'hui", g.today));
+  h.push(sec('📆 Cette semaine', g.semaine));
+  h.push(sec('🗓️ Plus tard', g.plus));
+  h.push(sec('❔ Sans date connue', g.inconnu));
+  body.innerHTML=h.join('');
+  body.querySelectorAll('.cal-row[data-id]').forEach(el=>el.onclick=()=>{ $('#calendarOverlay').classList.remove('open'); openDetail(el.dataset.id); });
+}
 // Cadres d'avatar débloqués par niveau (récompenses cosmétiques).
 const FRAMES = [
   {id:'none',     name:'Aucun',       lvl:1},
@@ -2072,6 +2179,65 @@ async function urlToDataURL(url, max=600){
   }
   throw new Error('toutes les passerelles ont échoué');
 }
+
+// =========================================================
+//  CALENDRIER DES SORTIES (offline-first)
+//  Prochain épisode des fiches EN COURS : anime (AniList via id MAL) + série (TMDB).
+//  Cache local re-récupérable (mc_releases, PAS synchronisé). Actualise seulement si en ligne.
+// =========================================================
+function malIdFromLink(link){ const m=/myanimelist\.net\/anime\/(\d+)/.exec(link||''); return m?m[1]:null; }
+function tmdbTvIdFromLink(link){ const m=/themoviedb\.org\/tv\/(\d+)/.exec(link||''); return m?m[1]:null; }
+// Anime : AniList GraphQL (gratuit, sans clé) → date + n° du prochain épisode à partir de l'id MyAnimeList.
+async function fetchAnimeNext(malId){
+  const q = `query($id:Int){Media(idMal:$id,type:ANIME){status nextAiringEpisode{airingAt episode}}}`;
+  const r = await fetch('https://graphql.anilist.co', {method:'POST',
+    headers:{'Content-Type':'application/json','Accept':'application/json'},
+    body:JSON.stringify({query:q, variables:{id:+malId}})});
+  if(!r.ok) throw new Error('anilist '+r.status);
+  const d = (await r.json()).data?.Media;
+  if(!d) return {status:'none'};
+  if(d.nextAiringEpisode) return {status:'airing', date:dkey(new Date(d.nextAiringEpisode.airingAt*1000)), ep:d.nextAiringEpisode.episode};
+  return {status: d.status==='RELEASING' ? 'airing' : (d.status==='FINISHED' ? 'finished' : 'none')};
+}
+// Série : TMDB → prochain épisode à diffuser (date + saison/épisode).
+async function fetchSeriesNext(tmdbId){
+  const key = META.cfg.tmdbKey; if(!key) throw new Error('NO_KEY');
+  const r = await fetch('https://api.themoviedb.org/3/tv/'+tmdbId+'?api_key='+key+'&language=fr-FR');
+  if(!r.ok) throw new Error('tmdb '+r.status);
+  const d = await r.json();
+  const n = d.next_episode_to_air;
+  if(n && n.air_date) return {status:'airing', date:n.air_date, ep:n.episode_number, season:n.season_number};
+  return {status: d.status==='Returning Series' ? 'airing' : 'finished'};
+}
+const RELEASES = {
+  cache:{}, last:0, offline:!navigator.onLine, busy:false,
+  load(){ try{ const o=JSON.parse(localStorage.getItem('mc_releases')||'{}'); this.cache=o.cache||{}; this.last=o.last||0; }catch(e){ this.cache={}; this.last=0; } },
+  store(){ localStorage.setItem('mc_releases', JSON.stringify({cache:this.cache, last:this.last})); },
+  // Fiches concernées : statut « En cours » avec un lien exploitable (anime MAL / série TMDB).
+  relevant(){ return items.filter(i=> i.status==='en_cours'
+    && ((i.type==='anime' && malIdFromLink(i.link)) || (i.type==='film' && tmdbTvIdFromLink(i.link))) ); },
+  // Actualise depuis le réseau. Retourne false si hors-ligne (on garde le cache).
+  async refresh(){
+    if(this.busy) return false;
+    if(!navigator.onLine){ this.offline=true; return false; }
+    this.offline=false; this.busy=true;
+    try{
+      const rel = this.relevant();
+      for(const it of rel){
+        try{
+          const res = it.type==='anime' ? await fetchAnimeNext(malIdFromLink(it.link))
+                                         : await fetchSeriesNext(tmdbTvIdFromLink(it.link));
+          this.cache[it.id] = {...res, fetchedAt:Date.now()};
+        }catch(e){ /* échec ponctuel → on conserve l'ancien cache de cette fiche */ }
+        await new Promise(r=>setTimeout(r, 350));   // throttle poli (AniList/TMDB)
+      }
+      for(const id in this.cache){ if(!rel.find(x=>x.id===id)) delete this.cache[id]; }   // purge fiches terminées/supprimées
+      this.last = Date.now(); this.store();
+      return true;
+    } finally { this.busy=false; }
+  },
+};
+
 // Recherche en ligne selon le type. Retourne une liste normalisée de propositions.
 async function searchMeta(type, query){
   const src = metaSourceFor(type);
@@ -4060,6 +4226,19 @@ function bind(){
   let wrDown=null;
   $('#wrappedOverlay').onmousedown = e=>{ wrDown = e.target; };
   $('#wrappedOverlay').onclick = e=>{ if(e.target===$('#wrappedOverlay') && wrDown===$('#wrappedOverlay')) $('#wrappedOverlay').classList.remove('open'); };
+
+  // Calendrier des sorties
+  $('#calendarBtn').onclick   = openCalendar;
+  $('#closeCalendar').onclick  = ()=>$('#calendarOverlay').classList.remove('open');
+  $('#closeCalendar2').onclick = ()=>$('#calendarOverlay').classList.remove('open');
+  $('#calRefresh').onclick = doCalRefresh;
+  let calDown=null;
+  $('#calendarOverlay').onmousedown = e=>{ calDown = e.target; };
+  $('#calendarOverlay').onclick = e=>{ if(e.target===$('#calendarOverlay') && calDown===$('#calendarOverlay')) $('#calendarOverlay').classList.remove('open'); };
+  // Réactualise le bandeau/contenu quand l'état réseau change (si le calendrier est ouvert).
+  const onNet = ()=>{ if($('#calendarOverlay').classList.contains('open')){ if(navigator.onLine) doCalRefresh(); else renderCalendar(); } };
+  window.addEventListener('online', onNet);
+  window.addEventListener('offline', onNet);
 
   // Apparence
   $('#themeBtn').onclick = openTheme;
