@@ -343,6 +343,22 @@
   .cal-ep{font-weight:700; color:var(--accent-2)}
   .cal-rel{color:var(--txt-dim)}
   .cal-muted{color:var(--txt-dim); font-style:italic}
+  /* ---------- DLC (fiche jeu) ---------- */
+  .dlc-list{display:flex; flex-direction:column; gap:6px; margin:6px 0}
+  .dlc-row{display:flex; align-items:center; gap:8px; background:var(--card); border:1px solid var(--line); border-radius:8px; padding:6px 9px; font-size:13px}
+  .dlc-own{display:flex; margin:0; cursor:pointer}
+  .dlc-own input{width:auto; margin:0}
+  .dlc-name{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .dlc-name.owned{color:var(--ok)}
+  .dlc-kind{color:var(--txt-dim); font-size:11px}
+  .dlc-badge{flex:0 0 auto; font-size:11.5px; font-weight:700; padding:2px 8px; border-radius:12px; white-space:nowrap}
+  .dlc-badge.soon{background:color-mix(in srgb, var(--accent-2) 22%, var(--card)); color:var(--accent-2)}
+  .dlc-badge.out{background:var(--bg2); color:var(--txt-dim)}
+  .dlc-del{flex:0 0 auto; background:none; border:none; color:var(--txt-dim); cursor:pointer; font-size:14px; padding:0 2px}
+  .dlc-del:hover{color:var(--bad)}
+  .dlc-actions{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px}
+  .dlc-add{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px}
+  .dlc-add input[type=text]{flex:1; min-width:140px}
   /* ---------- Profil + Niveau/XP ---------- */
   .profile-box{display:flex; gap:14px; align-items:center; border-radius:16px; padding:16px; margin-bottom:18px;
     color:#fff; background:linear-gradient(135deg,var(--accent),var(--accent-2))}
@@ -1002,6 +1018,17 @@
       <div class="help">Tes clés sont chiffrées avec ta phrase puis synchronisées. Sur un autre appareil : configure la synchro, puis entre la même phrase et « Déverrouiller ». 🔒 La phrase n'est jamais sauvegardée — si tu l'oublies, les clés sont irrécupérables (re-saisis-les simplement).</div>
     </div>
 
+    <div class="field" style="margin-top:14px; border-top:1px solid var(--line); padding-top:14px">
+      <label>🔔 Notifications de sorties</label>
+      <label class="switch"><input type="checkbox" id="cfgNotif"> Me prévenir quand un épisode sort (anime/série en cours)</label>
+      <div class="help">Vérifié à l'ouverture du calendrier 📅 et au lancement de l'appli (si en ligne). ⚠️ Sur le web, les notifications n'arrivent que lorsque l'appli est ouverte.</div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:8px">
+        <button class="btn" id="notifTestBtn" type="button">🔔 Tester maintenant</button>
+        <button class="btn" id="notifTest1minBtn" type="button">⏱️ TEST : 1 notif/min</button>
+      </div>
+      <div class="help" id="notifStatus"></div>
+    </div>
+
     <div class="sync-status" id="syncStatus"></div>
     <div class="modal-actions">
       <button class="btn btn-danger" id="cfgForget" style="display:none">Oublier ce compte</button>
@@ -1392,6 +1419,69 @@ async function openDetail(id){
   } else sBtn.style.display='none';
 }
 
+// --- Section DLC (fiches jeu) : voir + récupérer (Worker) + ajouter manuellement ---
+function dlcStatus(d){
+  const today = todayKey();
+  if(d.date) return d.date>today ? {cls:'soon', txt:'🔜 '+fmtDate(d.date)} : {cls:'out', txt:'✅ '+fmtDate(d.date)};
+  if(d.coming) return {cls:'soon', txt:'🔜 '+(d.dateText||'À venir')};
+  if(d.dateText) return {cls:'out', txt:d.dateText};
+  return {cls:'out', txt:'Date inconnue'};
+}
+function dlcSectionHtml(i){
+  const list = i.dlcs||[];
+  const rows = list.map((d,idx)=>{
+    const st = dlcStatus(d);
+    return `<div class="dlc-row">
+      <label class="dlc-own" title="Je le possède"><input type="checkbox" data-dlc-own="${idx}" ${d.owned?'checked':''}></label>
+      <span class="dlc-name ${d.owned?'owned':''}">${escapeHtml(d.title)} <span class="dlc-kind">${escapeHtml(d.kind||'DLC')}${d.manual?' · ✍️':''}</span></span>
+      <span class="dlc-badge ${st.cls}">${st.txt}</span>
+      ${d.manual?`<button class="dlc-del" data-dlc-del="${idx}" title="Retirer">✕</button>`:''}
+    </div>`;
+  }).join('');
+  const hasId = steamAppIdFromLink(i.link) || igdbSlugFromLink(i.link);
+  return `<div class="dlc-sec">
+    <div class="stat-h" style="margin-top:16px">🎮 DLC &amp; extensions</div>
+    ${list.length ? `<div class="dlc-list">${rows}</div>` : `<p class="help" style="margin:4px 0">Aucun DLC enregistré.</p>`}
+    <div class="dlc-actions">
+      ${hasId ? `<button class="btn" id="dlcFetch" type="button">🔄 Récupérer les DLC</button>` : ''}
+      <button class="btn" id="dlcAddToggle" type="button">➕ Ajouter manuellement</button>
+    </div>
+    <div class="dlc-add" id="dlcAddForm" style="display:none">
+      <input type="text" id="dlcTitle" placeholder="Nom du DLC / extension">
+      <input type="date" id="dlcDate" title="Date de sortie (facultative)">
+      <button class="btn btn-primary" id="dlcAddBtn" type="button">Ajouter</button>
+    </div>
+    <div class="help" id="dlcStatus"></div>
+  </div>`;
+}
+function wireDlc(i){
+  const sec = $('#dInfo'); if(!sec || !sec.querySelector('.dlc-sec')) return;
+  const save = async ()=>{ i.updated=Date.now(); await DB.put(i); renderDetailInfo(i); await afterChange(); };
+  const fb = $('#dlcFetch');
+  if(fb) fb.onclick = async ()=>{
+    if(!navigator.onLine){ $('#dlcStatus').textContent='📡 Hors ligne — connecte-toi pour récupérer les DLC.'; return; }
+    fb.disabled=true; fb.textContent='⏳ Récupération…';
+    try{
+      const fetched = await fetchGameDlc(i);
+      i.dlcs = mergeDlc(i.dlcs, fetched);
+      $('#dlcStatus').textContent = `✅ ${fetched.length} DLC récupéré(s).`;
+      await save();
+    }catch(e){
+      fb.disabled=false; fb.textContent='🔄 Récupérer les DLC';
+      $('#dlcStatus').textContent = '❌ ' + (e.message==='NO_ID'?'Cette fiche n\'a pas de lien Steam/IGDB exploitable.'
+        : e.message==='NO_PROXY'?'Configure le proxy jeux dans ⚙️ Paramètres.' : 'Échec : '+e.message);
+    }
+  };
+  const at = $('#dlcAddToggle'); if(at) at.onclick = ()=>{ const f=$('#dlcAddForm'); f.style.display = f.style.display==='none'?'flex':'none'; if(f.style.display==='flex') $('#dlcTitle').focus(); };
+  const ab = $('#dlcAddBtn'); if(ab) ab.onclick = async ()=>{
+    const t = $('#dlcTitle').value.trim(); if(!t){ $('#dlcTitle').focus(); return; }
+    i.dlcs = [...(i.dlcs||[]), {title:t, date:$('#dlcDate').value||null, dateText:'', coming:false, kind:'DLC', manual:true, owned:false}];
+    await save();
+  };
+  sec.querySelectorAll('[data-dlc-own]').forEach(c=>c.onchange = async ()=>{ i.dlcs[+c.dataset.dlcOwn].owned = c.checked; await save(); });
+  sec.querySelectorAll('[data-dlc-del]').forEach(b=>b.onclick = async ()=>{ i.dlcs.splice(+b.dataset.dlcDel,1); await save(); });
+}
+
 // Construit (et reconstruit après un ＋/−) la zone d'infos du détail, SANS toucher à l'audio
 const pbar = w => `<div class="prog-bar" style="margin-top:6px"><i style="width:${w}%"></i></div>`;
 function renderDetailInfo(i){
@@ -1440,6 +1530,7 @@ function renderDetailInfo(i){
   if(i.tags&&i.tags.length) h.push(`<div class="d-tags">${i.tags.map(x=>`<span class="tag">${escapeHtml(x)}</span>`).join('')}</div>`);
   if(i.lists&&i.lists.length) h.push(`<div class="d-tags">${i.lists.map(x=>`<span class="tag" style="background:var(--accent);color:#fff">📚 ${escapeHtml(x)}</span>`).join('')}</div>`);
   if(i.link) h.push(`<a class="btn d-link" href="${escapeHtml(i.link)}" target="_blank" rel="noopener">🔗 Ouvrir le lien</a>`);
+  if(isGame) h.push(dlcSectionHtml(i));   // 🎮 DLC & extensions (voir / récupérer / ajouter)
 
   $('#dInfo').innerHTML = h.join('');
   $('#dComment').innerHTML = i.comment ? `<div class="d-comment">${escapeHtml(i.comment)}</div>` : '';
@@ -1447,6 +1538,7 @@ function renderDetailInfo(i){
   $('#dInfo').querySelectorAll('.qbtn').forEach(b=> b.onclick=()=>quickBump(b.dataset.q, +b.dataset.d));
   const qp=$('#qProg'); if(qp) qp.onchange=()=>quickSet('prog', +qp.value||0);
   const qa=$('#qAch'); if(qa) qa.onchange=()=>quickSet('ach', +qa.value||0);
+  if(isGame) wireDlc(i);
 }
 
 async function toggleFav(id){
@@ -1826,6 +1918,7 @@ async function doCalRefresh(){
   await RELEASES.refresh();
   if(btn){ btn.disabled=false; btn.textContent='🔄 Actualiser'; }
   renderCalendar();
+  NOTIF.checkReleases();   // prévient si un épisode sort aujourd'hui
 }
 function renderCalendar(){
   const body=$('#calendarBody'); if(!body) return;
@@ -2209,6 +2302,30 @@ async function fetchSeriesNext(tmdbId){
   if(n && n.air_date) return {status:'airing', date:n.air_date, ep:n.episode_number, season:n.season_number};
   return {status: d.status==='Returning Series' ? 'airing' : 'finished'};
 }
+// --- DLC de jeux (via le Worker perso) : Steam (par appid) ou IGDB (par slug), parsés du lien de la fiche ---
+function steamAppIdFromLink(link){ const m=/store\.steampowered\.com\/app\/(\d+)/.exec(link||''); return m?m[1]:null; }
+function igdbSlugFromLink(link){ const m=/igdb\.com\/games\/([^/?#]+)/.exec(link||''); return m?m[1]:null; }
+async function fetchGameDlc(it){
+  let base=(META.cfg.proxyUrl||'').trim().replace(/\/+$/,''); if(base && !/^https?:\/\//i.test(base)) base='https://'+base;
+  if(!base) throw new Error('NO_PROXY');
+  const slug=igdbSlugFromLink(it.link), appid=steamAppIdFromLink(it.link);
+  const qs = slug ? 'slug='+encodeURIComponent(slug) : (appid ? 'steam='+appid : null);
+  if(!qs) throw new Error('NO_ID');
+  const r=await fetch(base+'/dlc?'+qs); if(!r.ok) throw new Error('HTTP '+r.status);
+  const d=await r.json();
+  return (d.items||[]).map(x=>({title:x.title, date:x.date||null, dateText:x.dateText||'', coming:!!x.coming, kind:x.kind||'DLC', manual:false, owned:false}));
+}
+// Fusion : on garde les DLC manuels + le flag « possédé » ; on remplace le reste par les données fraîches.
+function mergeDlc(existing, fetched){
+  const ex = existing||[];
+  const manual = ex.filter(d=>d.manual);
+  const ownedTitles = new Set(ex.filter(d=>d.owned).map(d=>(d.title||'').toLowerCase()));
+  const manualTitles = new Set(manual.map(d=>(d.title||'').toLowerCase()));
+  const auto = fetched
+    .filter(d=>!manualTitles.has((d.title||'').toLowerCase()))
+    .map(d=>({...d, owned: ownedTitles.has((d.title||'').toLowerCase())}));
+  return [...manual, ...auto];
+}
 const RELEASES = {
   cache:{}, last:0, offline:!navigator.onLine, busy:false,
   load(){ try{ const o=JSON.parse(localStorage.getItem('mc_releases')||'{}'); this.cache=o.cache||{}; this.last=o.last||0; }catch(e){ this.cache={}; this.last=0; } },
@@ -2236,6 +2353,60 @@ const RELEASES = {
       return true;
     } finally { this.busy=false; }
   },
+};
+
+// =========================================================
+//  NOTIFICATIONS de sorties (local, appli ouverte — pas de push serveur)
+// =========================================================
+const NOTIF = {
+  get on(){ return localStorage.getItem('mc_notif')==='1'; },
+  set on(v){ localStorage.setItem('mc_notif', v?'1':'0'); },
+  async ensurePermission(){
+    if(!('Notification' in window)) return false;
+    if(Notification.permission==='granted') return true;
+    if(Notification.permission==='denied') return false;
+    return (await Notification.requestPermission())==='granted';
+  },
+  async show(title, body, tag){
+    if(!('Notification' in window) || Notification.permission!=='granted') return false;
+    try{
+      const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
+      const opts = { body, tag, icon:'icon-192.png' };
+      if(reg && reg.showNotification) await reg.showNotification(title, opts);   // marche mieux en PWA installée
+      else new Notification(title, opts);
+      return true;
+    }catch(e){ try{ new Notification(title, {body}); return true; }catch(_){ return false; } }
+  },
+  // Prévient pour les épisodes qui sortent AUJOURD'HUI (une seule fois par épisode/date).
+  async checkReleases(){
+    if(!this.on || !('Notification' in window) || Notification.permission!=='granted') return;
+    let seen; try{ seen=JSON.parse(localStorage.getItem('mc_notified')||'{}'); }catch(e){ seen={}; }
+    const tk = todayKey();
+    for(const it of RELEASES.relevant()){
+      const c = RELEASES.cache[it.id];
+      if(c && c.status==='airing' && c.date===tk){
+        const key = it.id+'|'+c.date;
+        if(!seen[key]){
+          const epTxt = c.season ? `S${c.season}E${c.ep}` : (c.ep?`Ép. ${c.ep}`:'Nouvel épisode');
+          if(await this.show('📺 Nouvel épisode !', `${it.title} — ${epTxt} sort aujourd'hui`, key)) seen[key]=Date.now();
+        }
+      }
+    }
+    localStorage.setItem('mc_notified', JSON.stringify(seen));
+  },
+  // ---- ⏱️ TEST À SUPPRIMER : une notification toutes les minutes ----
+  _testTimer:null,
+  async toggleTest(){
+    if(this._testTimer){ clearInterval(this._testTimer); this._testTimer=null; this._status('Test arrêté.'); return false; }
+    if(!await this.ensurePermission()){ this._status('❌ Permission refusée.'); return false; }
+    let n=0;
+    const fire=()=>{ n++; this.show('🔔 Test WishTvTime', `Notification de test n°${n} (${new Date().toLocaleTimeString()})`, 'test'); };
+    fire(); this._testTimer=setInterval(fire, 60000);
+    this._status('⏱️ Test actif : 1 notif/min. Reclique pour arrêter.');
+    return true;
+  },
+  // ---- fin TEST ----
+  _status(msg){ const s=$('#notifStatus'); if(s) s.textContent=msg; },
 };
 
 // Recherche en ligne selon le type. Retourne une liste normalisée de propositions.
@@ -2637,6 +2808,7 @@ async function save(){
     audioSha: audioChanged ? undefined : existing?.audioSha,
     audioDirty: audioChanged ? !!curAudio : !!existing?.audioDirty,
     fav: existing?.fav || false,                       // on conserve le favori lors d'une édition
+    dlcs: existing?.dlcs || [],                        // on conserve les DLC (récupérés/manuels) lors d'une édition
     created: existing?.created || Date.now(),
     updated: Date.now(),
   };
@@ -4240,6 +4412,18 @@ function bind(){
   window.addEventListener('online', onNet);
   window.addEventListener('offline', onNet);
 
+  // Notifications de sorties
+  const nc = $('#cfgNotif');
+  if(nc){
+    nc.checked = NOTIF.on;
+    nc.onchange = async ()=>{
+      if(nc.checked){ const ok = await NOTIF.ensurePermission(); NOTIF.on = ok; nc.checked = ok; NOTIF._status(ok?'✅ Notifications activées.':'❌ Permission refusée par le navigateur.'); if(ok && navigator.onLine) RELEASES.refresh().then(()=>NOTIF.checkReleases()); }
+      else { NOTIF.on = false; NOTIF._status('Notifications désactivées.'); }
+    };
+  }
+  $('#notifTestBtn').onclick = async ()=>{ if(await NOTIF.ensurePermission()){ NOTIF.show('🔔 Test WishTvTime', 'Si tu vois ça, les notifications marchent ! ✅', 'test'); NOTIF._status('Notification envoyée.'); } else NOTIF._status('❌ Permission refusée.'); };
+  $('#notifTest1minBtn').onclick = async (e)=>{ const on = await NOTIF.toggleTest(); e.target.textContent = on ? '⏹️ Arrêter le test' : '⏱️ TEST : 1 notif/min'; };
+
   // Apparence
   $('#themeBtn').onclick = openTheme;
   $('#closeTheme').onclick = ()=>$('#themeOverlay').classList.remove('open');
@@ -4394,6 +4578,12 @@ function bind(){
   } else {
     SYNC.setDot(SYNC.configured() ? 'ok' : 'off');
     if(SYNC.cfg.auto && SYNC.configured()) SYNC.run(true);
+  }
+  // Notifications de sorties au lancement : actualise les sorties si nécessaire puis prévient pour aujourd'hui.
+  RELEASES.load();
+  if(NOTIF.on){
+    if(navigator.onLine && Date.now()-RELEASES.last > 3*3600*1000) RELEASES.refresh().then(()=>NOTIF.checkReleases());
+    else NOTIF.checkReleases();
   }
 })();
 </script>

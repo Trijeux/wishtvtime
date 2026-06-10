@@ -51,7 +51,8 @@ export default {
     try{
       if(path.endsWith('/games'))     return await searchGames(url, env);
       if(path.endsWith('/steam/app')) return await steamApp(url);
-      return json({ ok: true, msg: 'WishTvTime proxy. Endpoints : /games?q=…  ·  /steam/app?appid=…' });
+      if(path.endsWith('/dlc'))       return await gameDlc(url, env);
+      return json({ ok: true, msg: 'WishTvTime proxy. Endpoints : /games?q=…  ·  /steam/app?appid=…  ·  /dlc?steam=APPID | ?slug=IGDB_SLUG' });
     }catch(e){
       return json({ error: String((e && e.message) || e) }, 500);
     }
@@ -165,4 +166,66 @@ async function steamApp(url){
     rating:   mc ? Math.min(5, Math.round(mc / 20)) : 0,   // Metacritic /100 → /5 arrondi
     synopsis: info.short_description || '',
   });
+}
+
+// ---- DLC / extensions d'un jeu (calendrier des sorties jeux) ----
+// /dlc?steam=APPID  (liste + « à venir », date parfois imprécise)  OU  /dlc?slug=IGDB_SLUG (dates précises)
+async function gameDlc(url, env){
+  const steam = url.searchParams.get('steam');
+  const slug  = url.searchParams.get('slug');
+  if(steam) return json({ source: 'steam', items: await steamDlc(steam) });
+  if(slug){
+    if(!(env.TWITCH_ID && env.TWITCH_SECRET)) return json({ source: 'igdb', error: 'IGDB non configuré', items: [] });
+    return json({ source: 'igdb', items: await igdbDlc(slug, env) });
+  }
+  return json({ items: [] });
+}
+// IGDB : dates PRÉCISES (timestamps) pour DLC + extensions, sorties et à venir.
+async function igdbDlc(slug, env){
+  const tok = await igdbToken(env);
+  const headers = { 'Client-ID': env.TWITCH_ID, 'Authorization': 'Bearer ' + tok, 'Accept': 'application/json' };
+  const body = 'fields name, dlcs.name, dlcs.first_release_date, expansions.name, expansions.first_release_date,' +
+    ' standalone_expansions.name, standalone_expansions.first_release_date;' +
+    ` where slug = "${slug.replace(/"/g, '')}"; limit 1;`;
+  const r = await fetch('https://api.igdb.com/v4/games', { method: 'POST', headers, body });
+  if(!r.ok) throw new Error('IGDB ' + r.status);
+  const g = (await r.json())[0];
+  if(!g) return [];
+  const out = [];
+  const add = (x, kind) => { if(x && x.name) out.push({
+    title: x.name,
+    date:  x.first_release_date ? new Date(x.first_release_date * 1000).toISOString().slice(0, 10) : null,
+    kind,
+  }); };
+  (g.dlcs || []).forEach(x => add(x, 'DLC'));
+  (g.expansions || []).forEach(x => add(x, 'Extension'));
+  (g.standalone_expansions || []).forEach(x => add(x, 'Extension'));
+  return out;
+}
+// Steam : liste des DLC + flag « à venir ». La date future est un texte (souvent imprécis), pas de timestamp fiable.
+async function steamDlc(appid){
+  const r = await fetch('https://store.steampowered.com/api/appdetails?l=french&filters=basic&appids=' + appid);
+  const d = await r.json();
+  const info = d && d[appid] && d[appid].success ? d[appid].data : null;
+  const ids = (info && info.dlc) || [];
+  const out = [];
+  for(const id of ids.slice(0, 25)){
+    try{
+      const rr = await fetch('https://store.steampowered.com/api/appdetails?l=french&filters=basic&appids=' + id);
+      const dd = await rr.json();
+      const di = dd && dd[id] && dd[id].success ? dd[id].data : null;
+      if(!di) continue;
+      const rd = di.release_date || {};
+      const y = (rd.date || '').match(/\d{4}/);
+      out.push({
+        title: di.name,
+        date:  null,                       // Steam ne donne pas de date ISO fiable
+        dateText: rd.date || '',           // texte tel quel (« 12 déc. 2024 », « 2025 »…)
+        coming: !!rd.coming_soon,
+        year:  y ? +y[0] : null,
+        kind:  'DLC',
+      });
+    }catch(e){ /* DLC ignoré si échec */ }
+  }
+  return out;
 }
