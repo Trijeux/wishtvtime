@@ -850,6 +850,21 @@
   </div>
 </div>
 
+<!-- Modal Récap annuel (Wrapped) -->
+<div class="overlay" id="wrappedOverlay">
+  <div class="modal">
+    <h2><span id="wrappedTitle">🎁 Mon récap</span><button class="x" id="closeWrapped">✕</button></h2>
+    <div id="wrappedBody"></div>
+    <div class="modal-actions">
+      <div class="left" style="display:flex; gap:8px">
+        <button class="btn" id="wrappedPrev" type="button" title="Année précédente">←</button>
+        <button class="btn" id="wrappedNext" type="button" title="Année suivante">→</button>
+      </div>
+      <div class="right"><button class="btn btn-primary" id="closeWrapped2">Fermer</button></div>
+    </div>
+  </div>
+</div>
+
 <!-- Modal « Je regarde quoi ? » -->
 <div class="overlay" id="randomOverlay">
   <div class="modal">
@@ -1670,6 +1685,87 @@ function heatmapHtml(){
   return `<div class="heat-wrap"><div class="heat-grid">${cells}</div></div>
     <div class="heat-legend">Moins <span class="heat-cell"></span><span class="heat-cell l1"></span><span class="heat-cell l2"></span><span class="heat-cell l3"></span><span class="heat-cell l4"></span> Plus</div>
     <div class="heat-detail" id="heatDetail"><p class="help" style="margin:6px 0 0">👆 Clique un jour pour voir le détail.</p></div>`;
+}
+
+// =========================================================
+//  RÉCAP ANNUEL (Wrapped) — bilan d'une année, réutilise items + effectiveCounts
+// =========================================================
+let _wrappedYear = null;
+// Années disponibles (d'après les dates des fiches + le journal d'activité) + l'année en cours.
+function wrappedYears(){
+  const ys = new Set([String(new Date().getFullYear())]);
+  for(const it of items){
+    if(it.dateDone) ys.add(it.dateDone.slice(0,4));
+    if(it.created)  ys.add(String(new Date(it.created).getFullYear()));
+  }
+  for(const k in (PROFILE.cfg.activity||{})) ys.add(k.slice(0,4));
+  return [...ys].sort();
+}
+function openWrapped(year){
+  const years = wrappedYears();
+  _wrappedYear = year || _wrappedYear || String(new Date().getFullYear());
+  if(!years.includes(_wrappedYear)) _wrappedYear = years[years.length-1];
+  renderWrapped();
+  $('#wrappedOverlay').classList.add('open');
+}
+function renderWrapped(){
+  const Y = _wrappedYear;
+  const TYP = id => (TYPES.find(t=>t.id===id)||{label:id}).label;
+  const done  = items.filter(i=>i.status==='termine' && (i.dateDone||'').startsWith(Y));
+  const added = items.filter(i=> i.created && String(new Date(i.created).getFullYear())===Y);
+  // Épisodes & tomes consommés (hors jeux) + jeux finis
+  let units=0, games=0;
+  done.forEach(i=>{ if(i.type==='jeu') games++; else units += (i.progTotal||i.progCur||0); });
+  // Répartition par catégorie
+  const byType={}; done.forEach(i=> byType[i.type]=(byType[i.type]||0)+1);
+  const typeRows = Object.entries(byType).sort((a,b)=>b[1]-a[1]).map(([t,n])=>({label:TYP(t), n}));
+  // Coup de cœur = mieux noté
+  const rated = done.filter(i=>i.rating>0).sort((a,b)=>b.rating-a.rating);
+  // Activité de l'année (jours actifs, meilleure série, mois le plus actif)
+  const counts = effectiveCounts();
+  const dayKeys = Object.keys(counts).filter(k=>k.startsWith(Y) && counts[k]>0).sort();
+  let best=0, run=0, prev=null;
+  for(const k of dayKeys){ const [y,m,d]=k.split('-').map(Number); const cd=new Date(y,m-1,d);
+    if(prev && Math.round((cd-prev)/86400000)===1) run++; else run=1; if(run>best) best=run; prev=cd; }
+  const byMonth={}; dayKeys.forEach(k=> byMonth[k.slice(0,7)]=(byMonth[k.slice(0,7)]||0)+counts[k]);
+  let topMonth=null, topMonthN=0; for(const m in byMonth){ if(byMonth[m]>topMonthN){topMonthN=byMonth[m]; topMonth=m;} }
+  const monthName = topMonth ? new Date(+topMonth.slice(0,4), +topMonth.slice(5,7)-1, 1).toLocaleDateString('fr-FR',{month:'long'}) : '—';
+  // Tags & plateformes les plus fréquents (sur les fiches terminées de l'année)
+  const tagCount={}; done.forEach(i=>(i.tags||[]).forEach(t=>tagCount[t]=(tagCount[t]||0)+1));
+  const topTags = Object.entries(tagCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const platCount={}; done.forEach(i=>platsOf(i).forEach(p=>platCount[p]=(platCount[p]||0)+1));
+  const topPlat = Object.entries(platCount).sort((a,b)=>b[1]-a[1])[0];
+
+  const bars = rows => { const max=Math.max(1,...rows.map(r=>r.n));
+    return rows.map(r=>`<div class="stat-row"><span class="lbl">${r.label}</span><span class="barwrap"><i style="width:${Math.round(r.n/max*100)}%"></i></span><span class="cnt">${r.n}</span></div>`).join(''); };
+
+  $('#wrappedTitle').innerHTML = `🎁 Mon récap ${Y}`;
+  const h=[];
+  if(!done.length && !added.length && !dayKeys.length){
+    h.push(`<p class="help">Pas encore d'activité en ${Y}. Termine des fiches et reviens voir ton bilan ! ✨</p>`);
+  } else {
+    h.push(`<div class="stat-cards">
+      <div class="stat-card"><div class="v">${done.length}</div><div class="k">Fiches terminées</div></div>
+      <div class="stat-card"><div class="v">${units}</div><div class="k">Épisodes &amp; tomes</div></div>
+      <div class="stat-card"><div class="v">${games}</div><div class="k">Jeux finis</div></div>
+      <div class="stat-card"><div class="v">${dayKeys.length}</div><div class="k">Jours actifs</div></div>
+      <div class="stat-card"><div class="v">${best} 🔥</div><div class="k">Meilleure série</div></div>
+      <div class="stat-card"><div class="v">${added.length}</div><div class="k">Fiches ajoutées</div></div>
+    </div>`);
+    if(topMonth) h.push(`<div class="stat-h">📅 Mois le plus actif</div>
+      <p style="margin:4px 0; font-weight:700; text-transform:capitalize">${monthName} <span style="color:var(--txt-dim); font-weight:500">— ${topMonthN} action${topMonthN>1?'s':''}</span></p>`);
+    if(typeRows.length) h.push(`<div class="stat-h">🎬 Par catégorie</div>${bars(typeRows)}`);
+    if(rated.length){ const t=rated[0];
+      h.push(`<div class="stat-h">⭐ Ton coup de cœur</div>
+      <p style="margin:4px 0"><b>${escapeHtml(t.title)}</b> · ${'★'.repeat(t.rating)}${'☆'.repeat(Math.max(0,5-t.rating))} <span style="color:var(--txt-dim)">(${TYP(t.type)})</span></p>`); }
+    if(topTags.length) h.push(`<div class="stat-h">🏷️ Tes genres / tags</div>${bars(topTags.map(([t,n])=>({label:escapeHtml(t), n})))}`);
+    if(topPlat) h.push(`<div class="stat-h">📺 Plateforme n°1</div>
+      <p style="margin:4px 0; font-weight:700">${escapeHtml(topPlat[0])} <span style="color:var(--txt-dim); font-weight:500">— ${topPlat[1]} fiche${topPlat[1]>1?'s':''}</span></p>`);
+  }
+  $('#wrappedBody').innerHTML = h.join('');
+  const years = wrappedYears(), idx = years.indexOf(Y);
+  $('#wrappedPrev').style.visibility = idx>0 ? 'visible' : 'hidden';
+  $('#wrappedNext').style.visibility = idx<years.length-1 ? 'visible' : 'hidden';
 }
 // Cadres d'avatar débloqués par niveau (récompenses cosmétiques).
 const FRAMES = [
@@ -3694,7 +3790,8 @@ function openStats(){
       <div class="stat-card"><div class="v">${stk.best} 🏆</div><div class="k">Record de jours</div></div>
       <div class="stat-card"><div class="v">${stk.total}</div><div class="k">Jours actifs</div></div>
     </div>
-    ${heatmapHtml()}`);
+    ${heatmapHtml()}
+    <button class="btn btn-primary" id="openWrappedBtn" type="button" style="width:100%; margin-top:12px">🎁 Voir mon récap ${new Date().getFullYear()}</button>`);
 
   // Terminés par mois (12 derniers mois), d'après la date « terminé / vu »
   const byMonth = {};
@@ -3726,6 +3823,7 @@ function openStats(){
   wireProfile();
   const gi = $('#statGoal');
   if(gi) gi.onchange = ()=>{ localStorage.setItem('mc_goal', String(Math.max(0, +gi.value||0))); openStats(); };
+  const wb = $('#openWrappedBtn'); if(wb) wb.onclick = ()=>openWrapped();
   // Clic sur une case de la heatmap → détail du jour (progression par fiche + ajouts/terminés).
   const heatCounts = effectiveCounts();
   $('#statsBody').querySelectorAll('.heat-cell[data-day]').forEach(c=>c.onclick=()=>{
@@ -3953,6 +4051,15 @@ function bind(){
   let stDown=null;
   $('#statsOverlay').onmousedown = e=>{ stDown = e.target; };
   $('#statsOverlay').onclick = e=>{ if(e.target===$('#statsOverlay') && stDown===$('#statsOverlay')) $('#statsOverlay').classList.remove('open'); };
+
+  // Récap annuel (Wrapped)
+  $('#closeWrapped').onclick  = ()=>$('#wrappedOverlay').classList.remove('open');
+  $('#closeWrapped2').onclick = ()=>$('#wrappedOverlay').classList.remove('open');
+  $('#wrappedPrev').onclick = ()=>{ const ys=wrappedYears(), i=ys.indexOf(_wrappedYear); if(i>0) openWrapped(ys[i-1]); };
+  $('#wrappedNext').onclick = ()=>{ const ys=wrappedYears(), i=ys.indexOf(_wrappedYear); if(i<ys.length-1) openWrapped(ys[i+1]); };
+  let wrDown=null;
+  $('#wrappedOverlay').onmousedown = e=>{ wrDown = e.target; };
+  $('#wrappedOverlay').onclick = e=>{ if(e.target===$('#wrappedOverlay') && wrDown===$('#wrappedOverlay')) $('#wrappedOverlay').classList.remove('open'); };
 
   // Apparence
   $('#themeBtn').onclick = openTheme;
