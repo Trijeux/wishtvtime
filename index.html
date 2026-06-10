@@ -311,6 +311,23 @@
   .stat-card{background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; text-align:center}
   .stat-card .v{font-size:22px; font-weight:800}
   .stat-card .k{font-size:11px; color:var(--txt-dim); margin-top:4px}
+  /* ---------- Streak + heatmap (style GitHub) ---------- */
+  .heat-wrap{overflow-x:auto; padding-bottom:6px; margin:4px 0}
+  .heat-grid{display:grid; grid-auto-flow:column; grid-template-rows:repeat(7,1fr); gap:4px; width:max-content}
+  .heat-cell{width:18px; height:18px; border-radius:4px; background:var(--bg2); border:1px solid var(--line)}
+  .heat-cell[data-day]{cursor:pointer}
+  .heat-cell[data-day]:hover{outline:2px solid var(--txt-dim); outline-offset:1px}
+  .heat-cell.l1{background:color-mix(in srgb, var(--accent) 30%, var(--bg2)); border-color:transparent}
+  .heat-cell.l2{background:color-mix(in srgb, var(--accent) 55%, var(--bg2)); border-color:transparent}
+  .heat-cell.l3{background:color-mix(in srgb, var(--accent) 78%, var(--bg2)); border-color:transparent}
+  .heat-cell.l4{background:var(--accent); border-color:transparent}
+  .heat-cell.sel{outline:2px solid var(--txt); outline-offset:1px}
+  .heat-legend{display:flex; align-items:center; gap:5px; justify-content:flex-end; font-size:11px; color:var(--txt-dim); margin-top:6px}
+  .heat-legend .heat-cell{width:13px; height:13px; cursor:default}
+  .heat-detail{margin-top:10px}
+  .heat-detail-h{font-size:13px; font-weight:700; text-transform:capitalize; margin-bottom:6px}
+  .heat-detail-list{list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:5px}
+  .heat-detail-list li{background:var(--card); border:1px solid var(--line); border-radius:8px; padding:7px 10px; font-size:13px}
   /* ---------- Profil + Niveau/XP ---------- */
   .profile-box{display:flex; gap:14px; align-items:center; border-radius:16px; padding:16px; margin-bottom:18px;
     color:#fff; background:linear-gradient(135deg,var(--accent),var(--accent-2))}
@@ -1408,10 +1425,13 @@ async function quickSet(which, val){
   const i = items.find(x=>x.id===detailId); if(!i) return;
   const isGame = i.type==='jeu';
   val = Math.max(0, Math.round(val||0));
+  const before = which==='prog' ? i.progCur : i.achCur;
   if(which==='prog'){ if(!isGame && i.progTotal>0 && val>i.progTotal) val=i.progTotal; i.progCur=val; }
   else { if(i.achTotal>0 && val>i.achTotal) val=i.achTotal; i.achCur=val; }
   i.updated = Date.now();
   await DB.put(i);
+  // Mémorise la progression (delta positif) pour le détail « +N épisodes/tomes/% » ; sinon simple action.
+  logActivity(which==='prog' ? {itemId:i.id, delta:val-before} : undefined);
   render();              // met à jour la grille
   renderDetailInfo(i);   // rafraîchit barres/valeurs SANS relancer la musique
   await afterChange();   // propage à la synchro
@@ -1534,10 +1554,123 @@ async function decryptVault(blob, pass){
 }
 // ---- Profil (pseudo + photo) : stocké en local ET synchronisé (data.json) pour le suivi entre appareils ----
 const PROFILE = {
-  cfg:{ name:'', pic:null, frame:'none', nameFx:'none', particles:'none', mascot:'none', mascotSkin:0, banner:'', bannerImg:null, updated:0 },   // nameFx=id NAME_FX ; particles=id PARTICLES ; mascot=id MASCOTS ; mascotSkin=index du modèle alternatif ; banner=id BG_PRESETS|'custom' ; bannerImg=dataURL si perso
+  // nameFx=id NAME_FX ; particles=id PARTICLES ; mascot=id MASCOTS ; mascotSkin=index du modèle alternatif ; banner=id BG_PRESETS|'custom' ; bannerImg=dataURL si perso
+  // bgPreset=id BG_PRESETS (fond d'écran équipé) ; themePreset=id THEME_PRESETS (thème équipé) ; accent/accent2=couleur d'accent. Ces 3 « habillages » sont synchronisés (avant : per-device dans mc_theme).
+  // activity={ 'AAAA-MM-JJ': {n:nbActions, prog:{itemId:deltaCumulé}} } → journal daté (streak + heatmap + détail au clic). Ancien format (nombre brut) toléré. Fusionné jour par jour à la synchro (cf SYNC.run).
+  cfg:{ name:'', pic:null, frame:'none', nameFx:'none', particles:'none', mascot:'none', mascotSkin:0, banner:'', bannerImg:null, bgPreset:'', themePreset:'', accent:'', accent2:'', activity:{}, updated:0 },
   load(){ try{ Object.assign(this.cfg, JSON.parse(localStorage.getItem('mc_profile')||'{}')); }catch(e){} },
   store(){ localStorage.setItem('mc_profile', JSON.stringify(this.cfg)); },
 };
+// ---- Journal d'activité (streak + heatmap façon GitHub) ----
+// Clé de jour en heure LOCALE (pas UTC) → le « jour » colle au fuseau de l'utilisateur.
+function dkey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function todayKey(){ return dkey(new Date()); }
+// Normalise une entrée de jour vers {n, prog} (tolère l'ancien format = nombre brut).
+function _day(v){ return typeof v==='number' ? {n:v, prog:{}} : (v && typeof v==='object' ? {n:v.n||0, prog:v.prog||{}} : {n:0, prog:{}}); }
+// Compteur numérique d'un jour (pour couleur + streak).
+function dayCount(v){ return _day(v).n; }
+// Enregistre une action du jour. detail optionnel = {itemId, delta, unit} pour mémoriser « +N épisodes » par fiche.
+// Les appelants déclenchent ensuite afterChange() qui synchronise.
+function logActivity(detail){
+  if(!PROFILE.cfg.activity || typeof PROFILE.cfg.activity!=='object') PROFILE.cfg.activity = {};
+  const k = todayKey();
+  const day = _day(PROFILE.cfg.activity[k]);
+  day.n += 1;
+  if(detail && detail.itemId && detail.delta>0){
+    day.prog[detail.itemId] = (day.prog[detail.itemId]||0) + detail.delta;
+  }
+  PROFILE.cfg.activity[k] = day;
+  PROFILE.cfg.updated = Date.now();
+  PROFILE.store();
+}
+// Fusion de deux journaux : par jour, max sur n ET sur chaque delta de fiche (pas de gonflage à la re-synchro).
+function mergeActivity(a, b){
+  const out = {};
+  const keys = new Set([...Object.keys(a||{}), ...Object.keys(b||{})]);
+  for(const k of keys){
+    const da=_day((a||{})[k]), db=_day((b||{})[k]);
+    const prog = {};
+    for(const id in da.prog) prog[id] = Math.max(prog[id]||0, da.prog[id]||0);
+    for(const id in db.prog) prog[id] = Math.max(prog[id]||0, db.prog[id]||0);
+    out[k] = { n: Math.max(da.n, db.n), prog };
+  }
+  return out;
+}
+// Comptes par jour « effectifs » = journal + jours DÉRIVÉS des fiches (created=ajout, dateDone=terminé).
+// → heatmap/streak reflètent tout l'historique réel, même avant l'ajout du journal, et démarrent à la 1ʳᵉ fiche.
+function effectiveCounts(){
+  const out = {};
+  const act = PROFILE.cfg.activity||{};
+  for(const k in act){ out[k] = (out[k]||0) + dayCount(act[k]); }
+  for(const it of items){
+    if(it.created){ const k=dkey(new Date(it.created)); out[k]=(out[k]||0)+1; }
+    if(it.dateDone){ out[it.dateDone]=(out[it.dateDone]||0)+1; }
+  }
+  return out;
+}
+// Détail d'un jour (au clic sur une case) : lignes prêtes à afficher (HTML échappé).
+function dayDetail(k){
+  const lines = [];
+  const prog = _day((PROFILE.cfg.activity||{})[k]).prog;
+  for(const id in prog){
+    const it = items.find(x=>x.id===id);
+    const title = it ? it.title : 'Fiche supprimée';
+    let unit = it ? (UNIT[it.type]||'') : '';
+    if(prog[id]===1 && unit.endsWith('s')) unit = unit.slice(0,-1);   // accord singulier (+1 épisode, pas épisodes)
+    lines.push(`📈 <b>${escapeHtml(title)}</b> +${prog[id]} ${unit}`.trim());
+  }
+  for(const it of items){
+    if(it.dateDone===k) lines.push(`✅ Terminé <b>${escapeHtml(it.title)}</b>`);
+    if(it.created && dkey(new Date(it.created))===k) lines.push(`➕ Ajouté <b>${escapeHtml(it.title)}</b>`);
+  }
+  return lines;
+}
+// Streak courant (jours consécutifs jusqu'à aujourd'hui), record, et nb total de jours actifs.
+function computeStreak(){
+  const act = effectiveCounts();
+  const activeDays = Object.keys(act).filter(k=>act[k]>0).sort();
+  // Streak courant : on remonte à partir d'aujourd'hui (ou d'hier si rien aujourd'hui → le streak reste « vivant »).
+  let cur = 0; const d = new Date();
+  if(!(act[todayKey()]>0)) d.setDate(d.getDate()-1);
+  while(act[dkey(d)]>0){ cur++; d.setDate(d.getDate()-1); }
+  // Record : plus longue suite de jours consécutifs.
+  let best=0, run=0, prev=null;
+  for(const k of activeDays){
+    const [y,m,dd] = k.split('-').map(Number); const cd = new Date(y, m-1, dd);
+    if(prev && Math.round((cd-prev)/86400000)===1) run++; else run=1;
+    if(run>best) best=run; prev=cd;
+  }
+  return { cur, best, total: activeDays.length };
+}
+// Niveau d'intensité d'une case heatmap (0 = vide → 4 = jour le plus actif), RELATIF au max de la période.
+function heatLevel(n, max){
+  if(n<=0) return 0;
+  const r = n/Math.max(1,max);
+  return r<=0.25?1 : r<=0.5?2 : r<=0.75?3 : 4;
+}
+// Heatmap façon GitHub : ~52 dernières semaines, colonnes = semaines (lundi en haut).
+function heatmapHtml(){
+  const act = effectiveCounts();
+  const today = new Date(); today.setHours(0,0,0,0);
+  // Début = première activité réelle (pas de cases vides avant l'existence du site), plafonné à 53 semaines.
+  const keys = Object.keys(act).filter(k=>act[k]>0).sort();
+  let start;
+  if(keys.length){ const [y,m,dd]=keys[0].split('-').map(Number); start=new Date(y,m-1,dd); }
+  else start = new Date(today);
+  const cap = new Date(today); cap.setDate(cap.getDate() - 53*7);
+  if(start < cap) start = cap;
+  start.setDate(start.getDate() - ((start.getDay()+6)%7));   // recule au lundi → colonnes alignées
+  const max = Math.max(1, ...Object.values(act));             // jour le plus actif → calibre l'échelle de couleur
+  let cells = '';
+  for(let d=new Date(start); d<=today; d.setDate(d.getDate()+1)){
+    const k = dkey(d), n = act[k]||0, lv = heatLevel(n, max);
+    const label = n>0 ? `${n} action${n>1?'s':''} le ${d.toLocaleDateString('fr-FR')}` : `Rien le ${d.toLocaleDateString('fr-FR')}`;
+    cells += `<div class="heat-cell${lv?' l'+lv:''}" data-day="${k}" title="${label}"></div>`;
+  }
+  return `<div class="heat-wrap"><div class="heat-grid">${cells}</div></div>
+    <div class="heat-legend">Moins <span class="heat-cell"></span><span class="heat-cell l1"></span><span class="heat-cell l2"></span><span class="heat-cell l3"></span><span class="heat-cell l4"></span> Plus</div>
+    <div class="heat-detail" id="heatDetail"><p class="help" style="margin:6px 0 0">👆 Clique un jour pour voir le détail.</p></div>`;
+}
 // Cadres d'avatar débloqués par niveau (récompenses cosmétiques).
 const FRAMES = [
   {id:'none',     name:'Aucun',       lvl:1},
@@ -1700,13 +1833,13 @@ const GARDEVOIR_PREVIEW = [
 // Mascottes / compagnons de bureau débloquées par niveau (se baladent en bas de l'écran, synchronisées via PROFILE).
 const MASCOTS = [
   {id:'none',   name:'Aucune',  lvl:1,  emoji:''},
+  // Persos sans mode Shiny — niveaux provisoires, à rééquilibrer. Ordre croissant de niveau.
+  {id:'eevee',     name:'Eevee',     lvl:5,  emoji:'🦊', icon:'mascots/Eevee/icon.png',     shimeji:{img:'mascots/Eevee/',     anims:EEVEE_ANIMS,     preview:EEVEE_PREVIEW}},
+  {id:'cyndaquil', name:'Cyndaquil', lvl:8,  emoji:'🔥', icon:'mascots/Cyndaquil/icon.png', shimeji:{img:'mascots/Cyndaquil/', anims:CYNDAQUIL_ANIMS, preview:CYNDAQUIL_PREVIEW}},
   // Mascotte Umbreon (moteur Shimeji maison) — sprites nommés par animation (cf UMBREON_ANIMS), 2 modèles Normal/Shiny.
   {id:'shimeji', name:'Umbreon', lvl:10, emoji:'🌙', icon:'mascots/umbreon/normal/icon.png', shimeji:{img:'mascots/umbreon/normal/', anims:UMBREON_ANIMS, preview:UMBREON_PREVIEW},
     // Modèles alternatifs (mêmes animations, dossier de sprites différent) : bouton « modèle » pour basculer.
     skins:[ {name:'Normal', img:'mascots/umbreon/normal/'}, {name:'✨ Shiny', img:'mascots/umbreon/shiny/'} ]},
-  // Persos sans mode Shiny — niveaux provisoires, à rééquilibrer.
-  {id:'eevee',     name:'Eevee',     lvl:5,  emoji:'🦊', icon:'mascots/Eevee/icon.png',     shimeji:{img:'mascots/Eevee/',     anims:EEVEE_ANIMS,     preview:EEVEE_PREVIEW}},
-  {id:'cyndaquil', name:'Cyndaquil', lvl:8,  emoji:'🔥', icon:'mascots/Cyndaquil/icon.png', shimeji:{img:'mascots/Cyndaquil/', anims:CYNDAQUIL_ANIMS, preview:CYNDAQUIL_PREVIEW}},
   {id:'buizel',    name:'Buizel',    lvl:15, emoji:'💧', icon:'mascots/Buizel/icon.png',    shimeji:{img:'mascots/Buizel/',    anims:BUIZEL_ANIMS,    preview:BUIZEL_PREVIEW}},
   {id:'gardevoir', name:'Gardevoir', lvl:25, emoji:'💃', icon:'mascots/Gardevoir/icon.png', shimeji:{img:'mascots/Gardevoir/', anims:GARDEVOIR_ANIMS,  preview:GARDEVOIR_PREVIEW}},
 ];
@@ -2257,6 +2390,7 @@ async function save(){
   }
   await DB.put(item);
   if(existing){ Object.assign(existing,item); } else { items.push(item); }
+  logActivity();         // ajout/édition compte comme activité du jour (streak)
   closeModal(); render();
   toast(existing ? '✅ Fiche modifiée' : '✅ Fiche ajoutée');
   await afterChange();
@@ -2473,9 +2607,12 @@ const SYNC = {
     const jsonBlob = await this.createBlob(this.b64enc(jsonStr));
 
     // 2) Commit + avancement de branche, avec réessai si la branche a bougé
-    for(let attempt=0; attempt<3; attempt++){
-      // a) vrai dernier commit (sans cache)
-      let r = await this._getFresh('git/ref/heads/'+br);
+    const TRIES = 5;
+    for(let attempt=0; attempt<TRIES; attempt++){
+      // Petit délai croissant avant un réessai : laisse le cache CDN de l'API GitHub (git/ref) se rafraîchir.
+      if(attempt>0) await new Promise(res=>setTimeout(res, 500*attempt));
+      // a) vrai dernier commit (sans cache navigateur + cache-buster anti-CDN)
+      let r = await this._getFresh('git/ref/heads/'+br+'?_='+Date.now());
       if(!r.ok) throw new Error('ref '+r.status+' — '+await this._errMsg(r));
       const latest = (await r.json()).object.sha;
       // b) arbre de base + fichiers existants (pour les suppressions)
@@ -2513,11 +2650,11 @@ const SYNC = {
         if(bgWasDirty){ THEME.cfg.bgDirty = false; THEME.store(); }
         return;
       }
-      if((r.status===422 || r.status===409) && attempt<2){
-        this.status('La branche a bougé, nouvelle tentative...');
-        continue;                                       // la branche a bougé -> on relit et on recommence
+      if((r.status===422 || r.status===409) && attempt<TRIES-1){
+        this.status('La branche a bougé, nouvelle tentative ('+(attempt+2)+'/'+TRIES+')…');
+        continue;                                       // la branche a bougé -> on relit (après backoff) et on recommence
       }
-      throw new Error('ref-update '+r.status+' — '+await this._errMsg(r));
+      throw new Error('ref-update '+r.status+' — '+await this._errMsg(r)+' (la branche distante a avancé : relance une synchro 🔄)');
     }
   },
 
@@ -2563,9 +2700,17 @@ const SYNC = {
       if(remoteSecrets && (!META.cfg.secretsEnc || (remoteSecrets.updated||0) > (META.cfg.secretsEnc.updated||0))){
         META.cfg.secretsEnc = remoteSecrets; META.store(); vaultStatus();
       }
-      // Profil (pseudo + photo) : le plus récent gagne
-      if(remoteProfile && (remoteProfile.updated||0) > (PROFILE.cfg.updated||0)){
-        PROFILE.cfg = {name:remoteProfile.name||'', pic:remoteProfile.pic||null, frame:remoteProfile.frame||'none', banner:remoteProfile.banner||'', bannerImg:remoteProfile.bannerImg||null, updated:remoteProfile.updated||0}; PROFILE.store();
+      // Profil (pseudo + photo + cosmétiques + habillage) : le plus récent gagne.
+      // Merge générique sur les defaults → on n'oublie aucun champ (nameFx, particles, mascot, bgPreset…) même si on en ajoute plus tard.
+      if(remoteProfile){
+        // Le journal d'activité (streak) fusionne TOUJOURS jour par jour (max), indépendamment de qui « gagne » → aucun jour perdu entre appareils.
+        const mergedActivity = mergeActivity(PROFILE.cfg.activity||{}, remoteProfile.activity||{});
+        if((remoteProfile.updated||0) > (PROFILE.cfg.updated||0)){
+          const defaults = {name:'', pic:null, frame:'none', nameFx:'none', particles:'none', mascot:'none', mascotSkin:0, banner:'', bannerImg:null, bgPreset:'', themePreset:'', accent:'', accent2:'', activity:{}, updated:0};
+          PROFILE.cfg = Object.assign({}, defaults, remoteProfile);
+          THEME.apply();   // l'habillage (fond/thème/accent) vit dans PROFILE → on le réapplique
+        }
+        PROFILE.cfg.activity = mergedActivity; PROFILE.store();
       }
       // Fond d'écran : le plus récent gagne (entre cet appareil et le dépôt)
       if(remoteBg && (remoteBg.updated||0) > (THEME.cfg.bgUpdated||0)){
@@ -2743,9 +2888,26 @@ const THEME_PRESETS = [
 ];
 const THEME = {
   // bgPath/bgUpdated/bgDirty servent à synchroniser le fond d'écran via GitHub (cf. SYNC.push/run)
-  cfg:{theme:'dark', accent:'', accent2:'', cardMin:'170px', cardOrient:'vertical', bgPreset:'', themePreset:'', bgPath:null, bgUpdated:0, bgDirty:false},
+  // theme(clair/sombre), cardMin, cardOrient = préférences d'écran → restent PER-DEVICE ici.
+  // L'habillage synchronisé (bgPreset, themePreset, accent, accent2) vit dans PROFILE.cfg.
+  cfg:{theme:'dark', cardMin:'170px', cardOrient:'vertical', bgPath:null, bgUpdated:0, bgDirty:false},
   bg:null,
-  load(){ try{ Object.assign(this.cfg, JSON.parse(localStorage.getItem('mc_theme')||'{}')); }catch(e){} },
+  load(){
+    try{ Object.assign(this.cfg, JSON.parse(localStorage.getItem('mc_theme')||'{}')); }catch(e){}
+    // Migration douce : l'habillage était autrefois dans mc_theme (per-device). On le bascule vers PROFILE une seule fois.
+    try{
+      const old = JSON.parse(localStorage.getItem('mc_theme')||'{}');
+      const hadLook = ('bgPreset' in old)||('themePreset' in old)||('accent' in old);
+      const profileEmpty = !PROFILE.cfg.bgPreset && !PROFILE.cfg.themePreset && !PROFILE.cfg.accent;
+      if(hadLook && profileEmpty && (old.bgPreset||old.themePreset||old.accent)){
+        PROFILE.cfg.bgPreset = old.bgPreset||''; PROFILE.cfg.themePreset = old.themePreset||'';
+        PROFILE.cfg.accent = old.accent||''; PROFILE.cfg.accent2 = old.accent2||'';
+        PROFILE.cfg.updated = Date.now(); PROFILE.store();
+      }
+    }catch(e){}
+    ['bgPreset','themePreset','accent','accent2'].forEach(k=>delete this.cfg[k]);   // l'habillage a déménagé dans PROFILE
+    this.store();   // réécrit mc_theme sans les anciens champs d'habillage
+  },
   store(){ localStorage.setItem('mc_theme', JSON.stringify(this.cfg)); },
   apply(){
     const root = document.documentElement;
@@ -2753,16 +2915,16 @@ const THEME = {
     root.setAttribute('data-cards', this.cfg.cardOrient||'vertical');
     // On efface toutes les surcharges possibles (thème exclusif + accent), puis on réapplique.
     ['--bg','--bg2','--card','--card-h','--line','--txt','--txt-dim','--accent','--accent-2'].forEach(v=>root.style.removeProperty(v));
-    const tp = THEME_PRESETS.find(p=>p.id===this.cfg.themePreset);
+    const tp = THEME_PRESETS.find(p=>p.id===PROFILE.cfg.themePreset);
     if(tp) Object.entries(tp.vars).forEach(([k,v])=>root.style.setProperty(k,v));
     // L'accent choisi par l'utilisateur a priorité sur celui du thème exclusif.
-    if(this.cfg.accent){ root.style.setProperty('--accent', this.cfg.accent); root.style.setProperty('--accent-2', this.cfg.accent2||this.cfg.accent); }
+    if(PROFILE.cfg.accent){ root.style.setProperty('--accent', PROFILE.cfg.accent); root.style.setProperty('--accent-2', PROFILE.cfg.accent2||PROFILE.cfg.accent); }
     root.style.setProperty('--card-min', this.cfg.cardMin||'170px');
     this.applyBg();
   },
   applyBg(){
     const v = document.getElementById('bgVideo');
-    const preset = BG_PRESETS.find(p=>p.id===this.cfg.bgPreset);
+    const preset = BG_PRESETS.find(p=>p.id===PROFILE.cfg.bgPreset);
     // reset
     document.body.style.backgroundImage=''; document.body.style.backgroundSize=''; document.body.style.backgroundAttachment='';
     if(v){ v.style.display='none'; if(v.getAttribute('src')){ v.removeAttribute('src'); v.load(); } }
@@ -2809,15 +2971,15 @@ function renderThemePanel(){
     const el=document.createElement('button'); el.type='button'; el.className='swatch'+(ok?'':' locked');
     el.style.background=`linear-gradient(135deg,${c.a},${c.b})`;
     if(!ok){ el.textContent='🔒'; el.title='Couleur débloquée au niveau '+c.lvl; }
-    const active = ok && (THEME.cfg.accent||ACCENTS[0].a).toLowerCase()===c.a.toLowerCase();
+    const active = ok && (PROFILE.cfg.accent||ACCENTS[0].a).toLowerCase()===c.a.toLowerCase();
     if(active) el.classList.add('on');
     el.onclick = ok
-      ? ()=>{ THEME.cfg.accent=c.a; THEME.cfg.accent2=c.b; THEME.store(); THEME.apply(); renderThemePanel(); }
+      ? ()=>{ PROFILE.cfg.accent=c.a; PROFILE.cfg.accent2=c.b; PROFILE.cfg.updated=Date.now(); PROFILE.store(); THEME.apply(); renderThemePanel(); afterChange(); }
       : ()=>toast('🔒 Couleur débloquée au niveau '+c.lvl);
     sw.insertBefore(el, $('#accentCustom'));
   });
   // Fonds débloquables (dégradés + vidéos)
-  const bgGrid = $('#bgPresetGrid'), curBg = THEME.cfg.bgPreset||'';
+  const bgGrid = $('#bgPresetGrid'), curBg = PROFILE.cfg.bgPreset||'';
   bgGrid.innerHTML = [{id:'',name:'Aucun',lvl:1,type:'none'}, ...BG_PRESETS].map(p=>{
     const ok = !p.lvl || lvl>=p.lvl, sel = curBg===p.id;
     const prev = p.type==='video' ? `center/cover url('${p.file.replace('.mp4','.jpg')}')`
@@ -2828,10 +2990,10 @@ function renderThemePanel(){
   }).join('');
   bgGrid.querySelectorAll('.bg-it').forEach(b=>b.onclick=()=>{
     if(b.classList.contains('locked')){ toast('🔒 Débloqué au niveau '+b.dataset.lvl); return; }
-    THEME.cfg.bgPreset=b.dataset.bg; THEME.store(); THEME.apply(); renderThemePanel();
+    PROFILE.cfg.bgPreset=b.dataset.bg; PROFILE.cfg.updated=Date.now(); PROFILE.store(); THEME.apply(); renderThemePanel(); afterChange();
   });
   // Thèmes exclusifs
-  const tGrid = $('#themePresetGrid'), curT = THEME.cfg.themePreset||'';
+  const tGrid = $('#themePresetGrid'), curT = PROFILE.cfg.themePreset||'';
   tGrid.innerHTML = [{id:'',name:'Normal',lvl:1,vars:null}, ...THEME_PRESETS].map(p=>{
     const ok = !p.lvl || lvl>=p.lvl, sel = curT===p.id;
     const prev = p.vars ? `linear-gradient(135deg,${p.vars['--bg']||'#222'},${p.vars['--card']||'#333'})` : 'var(--bg2)';
@@ -2841,7 +3003,7 @@ function renderThemePanel(){
   }).join('');
   tGrid.querySelectorAll('.bg-it').forEach(b=>b.onclick=()=>{
     if(b.classList.contains('locked')){ toast('🔒 Débloqué au niveau '+b.dataset.lvl); return; }
-    THEME.cfg.themePreset=b.dataset.tp; THEME.store(); THEME.apply(); renderThemePanel();
+    PROFILE.cfg.themePreset=b.dataset.tp; PROFILE.cfg.updated=Date.now(); PROFILE.store(); THEME.apply(); renderThemePanel(); afterChange();
   });
   $('#cardSizeSel').value = THEME.cfg.cardMin||'170px';
   const prev=$('#bgPreview');
@@ -2867,14 +3029,15 @@ function enforceUnlocks(){
   if(nf && lvl < nf.lvl){ PROFILE.cfg.nameFx='none'; PROFILE.cfg.updated=Date.now(); PROFILE.store(); }
   const bn = BG_PRESETS.find(p=>p.id===PROFILE.cfg.banner);
   if(bn && lvl < bn.lvl){ PROFILE.cfg.banner=''; PROFILE.cfg.updated=Date.now(); PROFILE.store(); }
+  // Habillage (accent/fond/thème) désormais dans PROFILE (synchronisé) → retrait si le niveau ne suffit plus.
   let themeChanged = false;
-  const ac = ACCENTS.find(c=>c.lvl && (THEME.cfg.accent||'').toLowerCase()===c.a.toLowerCase());
-  if(ac && lvl < ac.lvl){ THEME.cfg.accent=''; THEME.cfg.accent2=''; themeChanged=true; }
-  const bp = BG_PRESETS.find(p=>p.id===THEME.cfg.bgPreset);
-  if(bp && bp.lvl && lvl < bp.lvl){ THEME.cfg.bgPreset=''; themeChanged=true; }
-  const tp = THEME_PRESETS.find(p=>p.id===THEME.cfg.themePreset);
-  if(tp && tp.lvl && lvl < tp.lvl){ THEME.cfg.themePreset=''; themeChanged=true; }
-  if(themeChanged){ THEME.store(); THEME.apply(); }
+  const ac = ACCENTS.find(c=>c.lvl && (PROFILE.cfg.accent||'').toLowerCase()===c.a.toLowerCase());
+  if(ac && lvl < ac.lvl){ PROFILE.cfg.accent=''; PROFILE.cfg.accent2=''; themeChanged=true; }
+  const bp = BG_PRESETS.find(p=>p.id===PROFILE.cfg.bgPreset);
+  if(bp && bp.lvl && lvl < bp.lvl){ PROFILE.cfg.bgPreset=''; themeChanged=true; }
+  const tp = THEME_PRESETS.find(p=>p.id===PROFILE.cfg.themePreset);
+  if(tp && tp.lvl && lvl < tp.lvl){ PROFILE.cfg.themePreset=''; themeChanged=true; }
+  if(themeChanged){ PROFILE.cfg.updated=Date.now(); PROFILE.store(); THEME.apply(); }
   const pa = PARTICLES.find(p=>p.id===(PROFILE.cfg.particles||'none'));
   if(pa && lvl < pa.lvl){ PROFILE.cfg.particles='none'; PROFILE.cfg.updated=Date.now(); PROFILE.store(); }
   const ma = MASCOTS.find(p=>p.id===(PROFILE.cfg.mascot||'none'));
@@ -3523,6 +3686,16 @@ function openStats(){
       <span class="help" style="margin:0">fiches / an</span>
     </div>`);
 
+  // 🔥 Streak d'activité + heatmap (journal daté PROFILE.cfg.activity, synchronisé jour par jour)
+  const stk = computeStreak();
+  h.push(`<div class="stat-h">🔥 Activité</div>
+    <div class="stat-cards">
+      <div class="stat-card"><div class="v">${stk.cur} 🔥</div><div class="k">Jours d'affilée</div></div>
+      <div class="stat-card"><div class="v">${stk.best} 🏆</div><div class="k">Record de jours</div></div>
+      <div class="stat-card"><div class="v">${stk.total}</div><div class="k">Jours actifs</div></div>
+    </div>
+    ${heatmapHtml()}`);
+
   // Terminés par mois (12 derniers mois), d'après la date « terminé / vu »
   const byMonth = {};
   items.forEach(i=>{ if(i.status==='termine' && i.dateDone){ byMonth[i.dateDone.slice(0,7)] = (byMonth[i.dateDone.slice(0,7)]||0)+1; } });
@@ -3553,6 +3726,21 @@ function openStats(){
   wireProfile();
   const gi = $('#statGoal');
   if(gi) gi.onchange = ()=>{ localStorage.setItem('mc_goal', String(Math.max(0, +gi.value||0))); openStats(); };
+  // Clic sur une case de la heatmap → détail du jour (progression par fiche + ajouts/terminés).
+  const heatCounts = effectiveCounts();
+  $('#statsBody').querySelectorAll('.heat-cell[data-day]').forEach(c=>c.onclick=()=>{
+    const k = c.dataset.day, lines = dayDetail(k), cnt = heatCounts[k]||0;
+    const [y,m,dd] = k.split('-').map(Number);
+    const human = new Date(y,m-1,dd).toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+    const d = $('#heatDetail');
+    let body;
+    if(lines.length) body = `<ul class="heat-detail-list">${lines.map(l=>`<li>${l}</li>`).join('')}</ul>`;
+    else if(cnt>0)   body = `<p class="help" style="margin:4px 0 0">${cnt} action${cnt>1?'s':''} ce jour — détail non disponible (avant le suivi détaillé).</p>`;
+    else             body = `<p class="help" style="margin:4px 0 0">Aucune activité ce jour.</p>`;
+    d.innerHTML = `<div class="heat-detail-h">${human}${cnt>0?` · ${cnt} action${cnt>1?'s':''}`:''}</div>` + body;
+    $('#statsBody').querySelectorAll('.heat-cell.sel').forEach(e=>e.classList.remove('sel'));
+    c.classList.add('sel');
+  });
   $('#statsBody').querySelectorAll('[data-frame]:not(.locked)').forEach(b=>b.onclick=()=>{
     PROFILE.cfg.frame = b.dataset.frame; PROFILE.cfg.updated = Date.now(); PROFILE.store();
     renderHeaderProfile(); afterChange(); openStats();
@@ -3776,7 +3964,7 @@ function bind(){
   $('#themeSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{ THEME.cfg.theme=b.dataset.theme; THEME.store(); THEME.apply(); renderThemePanel(); });
   $('#orientSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{ THEME.cfg.cardOrient=b.dataset.orient; THEME.store(); THEME.apply(); render(); renderThemePanel(); });
   $('#accentCustom').onclick = ()=>$('#accentColorInput').click();
-  $('#accentColorInput').oninput = e=>{ THEME.cfg.accent=e.target.value; THEME.cfg.accent2=e.target.value; THEME.store(); THEME.apply(); renderThemePanel(); };
+  $('#accentColorInput').oninput = e=>{ PROFILE.cfg.accent=e.target.value; PROFILE.cfg.accent2=e.target.value; PROFILE.cfg.updated=Date.now(); PROFILE.store(); THEME.apply(); renderThemePanel(); afterChange(); };
   $('#cardSizeSel').onchange = e=>{ THEME.cfg.cardMin=e.target.value; THEME.store(); THEME.apply(); };
   $('#bgPick').onclick = ()=>$('#bgInput').click();
   $('#bgInput').onchange = async e=>{ if(e.target.files[0]){ await THEME.setBg(await compress(e.target.files[0], 1600, .82)); renderThemePanel(); } e.target.value=''; };
@@ -3899,7 +4087,8 @@ function bind(){
   }
   // Demande un stockage PERMANENT (les données du navigateur, dans AppData, ne seront pas effacées auto)
   try{ if(navigator.storage && navigator.storage.persist){ await navigator.storage.persist(); } }catch(e){}
-  THEME.load(); THEME.apply();          // applique thème/couleur/taille tôt (évite le flash)
+  PROFILE.load();                      // profil + habillage (fond/thème/accent) AVANT THEME : THEME.apply() lit PROFILE.cfg
+  THEME.load(); THEME.apply();          // applique thème/couleur/taille tôt (évite le flash) — migre l'ancien habillage de mc_theme vers PROFILE
   buildSelectors();
   bind();
   await DB.open();
@@ -3907,7 +4096,6 @@ function bind(){
   items = await DB.all();
   loadTomb();
   META.load();                         // clé(s) de métadonnées (TMDB…) dispo dès le départ
-  PROFILE.load();                      // pseudo + photo de profil (niveau/XP)
   render();
   checkBadges();                       // baseline des badges (silencieuse au 1er lancement)
   checkLevelUp();                      // baseline du niveau (pas de confettis au 1er lancement)
