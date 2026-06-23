@@ -345,10 +345,10 @@
   .cal-muted{color:var(--txt-dim); font-style:italic}
   /* ---------- DLC (fiche jeu) ---------- */
   .dlc-list{display:flex; flex-direction:column; gap:6px; margin:6px 0}
-  .dlc-row{display:flex; align-items:center; gap:8px; background:var(--card); border:1px solid var(--line); border-radius:8px; padding:6px 9px; font-size:13px}
-  .dlc-own{display:flex; margin:0; cursor:pointer}
+  .dlc-row{display:flex; align-items:flex-start; gap:8px; background:var(--card); border:1px solid var(--line); border-radius:8px; padding:6px 9px; font-size:13px}
+  .dlc-own{display:flex; margin:0; cursor:pointer; padding-top:2px}
   .dlc-own input{width:auto; margin:0}
-  .dlc-name{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .dlc-name{flex:1; min-width:0; overflow-wrap:anywhere; word-break:break-word}
   .dlc-name.owned{color:var(--ok)}
   .dlc-kind{color:var(--txt-dim); font-size:11px}
   .dlc-badge{flex:0 0 auto; font-size:11.5px; font-weight:700; padding:2px 8px; border-radius:12px; white-space:nowrap}
@@ -366,6 +366,10 @@
   .profile-pic .pp-img{width:74px; height:74px; border-radius:50%; border:3px solid rgba(255,255,255,.65);
     background:rgba(0,0,0,.25); overflow:hidden; display:flex; align-items:center; justify-content:center; font-size:30px}
   .profile-pic .pp-img img{width:100%; height:100%; object-fit:cover}
+  .profile-pic .pp-del{position:absolute; top:-4px; left:-4px; width:22px; height:22px; border-radius:50%; z-index:2;
+    background:var(--bad); color:#fff; font-size:12px; font-weight:800; line-height:1; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; border:2px solid #fff}
+  .profile-pic .pp-del:hover{filter:brightness(1.12)}
   .profile-pic .lvl{position:absolute; bottom:-4px; right:-4px; background:#fff; color:var(--accent); font-size:11px; font-weight:800;
     border-radius:10px; padding:1px 7px; box-shadow:0 2px 6px rgba(0,0,0,.3)}
   /* Widget profil dans le header */
@@ -662,6 +666,8 @@
           <div class="field">
             <label>Statut</label>
             <select id="fStatus"></select>
+            <button type="button" class="btn" id="fAbandonBtn" style="display:none; margin-top:8px">🚫 Abandonner</button>
+            <div class="help" id="fStatusAuto" style="display:none">⚙️ Statut calculé automatiquement selon ta progression.</div>
           </div>
         </div>
         <div class="field">
@@ -1018,6 +1024,12 @@
       <div class="help">Tes clés sont chiffrées avec ta phrase puis synchronisées. Sur un autre appareil : configure la synchro, puis entre la même phrase et « Déverrouiller ». 🔒 La phrase n'est jamais sauvegardée — si tu l'oublies, les clés sont irrécupérables (re-saisis-les simplement).</div>
     </div>
 
+    <div class="field" style="margin-top:18px; border-top:1px solid var(--line); padding-top:16px">
+      <label>⚙️ Automatisation des statuts</label>
+      <label class="switch"><input type="checkbox" id="cfgAutoStatus"> Mettre à jour le statut automatiquement selon ma progression</label>
+      <div class="help">Quand c'est activé, le statut (À faire / En cours / En pause / Terminé) est calculé tout seul d'après ta progression. Tu peux toujours <b>Abandonner</b> une fiche à la main. Le type <b>Autre</b> reste manuel. 🔄 Réglage synchronisé entre tes appareils.</div>
+    </div>
+
     <div class="sync-status" id="syncStatus"></div>
     <div class="modal-actions">
       <button class="btn btn-danger" id="cfgForget" style="display:none">Oublier ce compte</button>
@@ -1058,6 +1070,56 @@ const statusById = id => STATUSES.find(s=>s.id===id) || STATUSES[0];
 // Unité de progression selon le type (libellé court affiché à côté des compteurs)
 const UNIT = {anime:'épisodes', manga:'tomes', jeu:'%', film:'épisodes', autre:'éléments'};
 const unitOf = type => UNIT[type] || '';
+
+// ---- Automatisation des statuts (réglage synchronisé : PROFILE.cfg.autoStatus) ----
+// Quand l'auto est activé, le statut d'une fiche est recalculé selon sa progression.
+// Seul « Abandonné » reste réglable à la main (override) ; le type « autre » reste 100% manuel.
+function autoStatusEnabled(){ return !!(typeof PROFILE!=='undefined' && PROFILE.cfg && PROFILE.cfg.autoStatus); }
+// Calcule le statut auto d'une fiche. Retourne null si indéterminé / type non géré (le statut courant est conservé).
+function computeAutoStatus(item){
+  // --- Jeux : progression = % (progCur) + succès (achCur/achTotal) ---
+  if(item.type==='jeu'){
+    const pc=item.progCur||0, ac=item.achCur||0, at=item.achTotal||0;
+    if(pc===0 && ac===0) return 'a_faire';
+    const done = pc>=100 && (at===0 || ac>=at);   // 100% ET tous les succès (ou pas de succès défini)
+    return done ? 'termine' : 'en_cours';
+  }
+  // --- Anime / Manga / Film-Série : progression = épisodes/tomes (progCur sur progTotal) ---
+  if(item.type==='anime' || item.type==='manga' || item.type==='film'){
+    const pc=item.progCur||0, pt=item.progTotal||0;
+    if(pt<=0) return pc>0 ? 'en_cours' : 'a_faire';   // total inconnu : on ne peut pas conclure « terminé »
+    if(pc<=0) return 'a_faire';
+    if(pc<pt) return 'en_cours';
+    // Tout vu : si des épisodes futurs sont prévus (anime/film) → en pause, sinon terminé.
+    // (le manga n'a pas de source de diffusion → toujours terminé)
+    if(item.type!=='manga'){
+      const rel = (typeof RELEASES!=='undefined' && RELEASES.cache) ? RELEASES.cache[item.id] : null;
+      if(rel && rel.status==='airing') return 'pause';
+    }
+    return 'termine';
+  }
+  return null;   // autre / type non géré
+}
+// Applique le statut auto à une fiche si l'option est active (sans toucher aux abandons ni au type « autre »).
+function maybeAutoStatus(item){
+  if(!autoStatusEnabled() || item.type==='autre' || item.status==='abandon') return;
+  const s = computeAutoStatus(item);
+  if(s && s!==item.status){
+    item.status = s;
+    if(s==='termine' && !item.dateDone) item.dateDone = todayKey();   // date « terminé » auto si absente
+  }
+}
+// Recalcule le statut de TOUTES les fiches (au moment où on active l'option). Persiste les fiches modifiées.
+async function recomputeAllStatuses(){
+  if(!autoStatusEnabled()) return;
+  let changed=false;
+  for(const it of items){
+    const before = it.status;
+    maybeAutoStatus(it);                 // applique règles + date « terminé » auto, en respectant abandon/autre
+    if(it.status!==before){ it.updated=Date.now(); await DB.put(it); changed=true; }
+  }
+  if(changed) render();
+}
 // Suggestions de plateformes adaptées à chaque type (saisie libre quand même possible)
 const PLATFORMS = {
   anime: ['Crunchyroll','ADN','Netflix','Disney+','Prime Video','Wakanim','Max','YouTube'],
@@ -1424,7 +1486,7 @@ function dlcSectionHtml(i){
       <label class="dlc-own" title="Je le possède"><input type="checkbox" data-dlc-own="${idx}" ${d.owned?'checked':''}></label>
       <span class="dlc-name ${d.owned?'owned':''}">${escapeHtml(d.title)} <span class="dlc-kind">${escapeHtml(d.kind||'DLC')}${d.manual?' · ✍️':''}</span></span>
       <span class="dlc-badge ${st.cls}">${st.txt}</span>
-      ${d.manual?`<button class="dlc-del" data-dlc-del="${idx}" title="Retirer">✕</button>`:''}
+      <button class="dlc-del" data-dlc-del="${idx}" title="Retirer ce DLC">✕</button>
     </div>`;
   }).join('');
   const hasId = steamAppIdFromLink(i.link) || igdbSlugFromLink(i.link);
@@ -1552,6 +1614,7 @@ async function quickSet(which, val){
   const before = which==='prog' ? i.progCur : i.achCur;
   if(which==='prog'){ if(!isGame && i.progTotal>0 && val>i.progTotal) val=i.progTotal; i.progCur=val; }
   else { if(i.achTotal>0 && val>i.achTotal) val=i.achTotal; i.achCur=val; }
+  maybeAutoStatus(i);   // auto-statut : recalcule le statut depuis la progression si l'option est active
   i.updated = Date.now();
   await DB.put(i);
   // Mémorise la progression (delta positif) pour le détail « +N épisodes/tomes/% » ; sinon simple action.
@@ -1585,6 +1648,22 @@ function updateFormType(){
   $('#metaBtn').style.display = metaSourceFor(type) ? 'inline-flex' : 'none';
   $('#metaSrc').style.display = (type==='jeu' && metaSourceFor(type)==='worker') ? 'flex' : 'none';  // forçage source : jeux via proxy
   $('#metaResults').classList.remove('open'); $('#metaResults').innerHTML = '';
+  applyStatusLock();   // verrouille le statut si l'auto est actif (dépend du type : « autre » reste manuel)
+}
+
+// Verrouille le champ Statut quand l'auto est actif (sauf type « autre ») et affiche le bouton Abandonner/Réactiver.
+function applyStatusLock(){
+  const locked = autoStatusEnabled() && $('#fType').value!=='autre';
+  const sel=$('#fStatus'), btn=$('#fAbandonBtn'), note=$('#fStatusAuto');
+  sel.disabled = locked;
+  if(btn)  btn.style.display  = locked ? 'inline-flex' : 'none';
+  if(note) note.style.display = locked ? 'block' : 'none';
+  if(locked) updateAbandonBtn();
+}
+// Le bouton bascule entre Abandonner (override manuel) et Réactiver (retour au statut auto, recalculé au save).
+function updateAbandonBtn(){
+  const sel=$('#fStatus'), btn=$('#fAbandonBtn'); if(!btn) return;
+  btn.textContent = sel.value==='abandon' ? '↩️ Réactiver (statut auto)' : '🚫 Abandonner';
 }
 
 // Affiche les pastilles de plateformes choisies + les suggestions cliquables
@@ -1681,7 +1760,7 @@ const PROFILE = {
   // nameFx=id NAME_FX ; particles=id PARTICLES ; mascot=id MASCOTS ; mascotSkin=index du modèle alternatif ; banner=id BG_PRESETS|'custom' ; bannerImg=dataURL si perso
   // bgPreset=id BG_PRESETS (fond d'écran équipé) ; themePreset=id THEME_PRESETS (thème équipé) ; accent/accent2=couleur d'accent. Ces 3 « habillages » sont synchronisés (avant : per-device dans mc_theme).
   // activity={ 'AAAA-MM-JJ': {n:nbActions, prog:{itemId:deltaCumulé}} } → journal daté (streak + heatmap + détail au clic). Ancien format (nombre brut) toléré. Fusionné jour par jour à la synchro (cf SYNC.run).
-  cfg:{ name:'', pic:null, frame:'none', nameFx:'none', particles:'none', mascot:'none', mascotSkin:0, banner:'', bannerImg:null, bgPreset:'', themePreset:'', accent:'', accent2:'', activity:{}, updated:0 },
+  cfg:{ name:'', pic:null, frame:'none', nameFx:'none', particles:'none', mascot:'none', mascotSkin:0, banner:'', bannerImg:null, bgPreset:'', themePreset:'', accent:'', accent2:'', activity:{}, autoStatus:false, updated:0 },
   load(){ try{ Object.assign(this.cfg, JSON.parse(localStorage.getItem('mc_profile')||'{}')); }catch(e){} },
   store(){ localStorage.setItem('mc_profile', JSON.stringify(this.cfg)); },
 };
@@ -1915,7 +1994,7 @@ function renderCalendar(){
   if(!online) h.push(`<div class="cal-banner off">📡 Hors ligne — dernier cache${RELEASES.last?` ${timeAgo(RELEASES.last)}`:' indisponible'}.</div>`);
   else if(RELEASES.last) h.push(`<div class="cal-banner ok">✅ Mis à jour ${timeAgo(RELEASES.last)}.</div>`);
   if(!rel.length){
-    h.push(`<p class="help">Aucun anime / série « En cours » lié à une fiche en ligne. Mets une fiche en <b>En cours</b> et ajoute-la via la <b>recherche en ligne</b> (anime ou série) pour suivre ses sorties.</p>`);
+    h.push(`<p class="help">Aucun anime / série « En cours » ou « En pause » lié à une fiche en ligne. Mets une fiche en <b>En cours</b> et ajoute-la via la <b>recherche en ligne</b> (anime ou série) pour suivre ses sorties.</p>`);
     body.innerHTML=h.join(''); return;
   }
   const today=new Date(); today.setHours(0,0,0,0);
@@ -2270,15 +2349,16 @@ function malIdFromLink(link){ const m=/myanimelist\.net\/anime\/(\d+)/.exec(link
 function tmdbTvIdFromLink(link){ const m=/themoviedb\.org\/tv\/(\d+)/.exec(link||''); return m?m[1]:null; }
 // Anime : AniList GraphQL (gratuit, sans clé) → date + n° du prochain épisode à partir de l'id MyAnimeList.
 async function fetchAnimeNext(malId){
-  const q = `query($id:Int){Media(idMal:$id,type:ANIME){status nextAiringEpisode{airingAt episode}}}`;
+  const q = `query($id:Int){Media(idMal:$id,type:ANIME){status episodes nextAiringEpisode{airingAt episode}}}`;
   const r = await fetch('https://graphql.anilist.co', {method:'POST',
     headers:{'Content-Type':'application/json','Accept':'application/json'},
     body:JSON.stringify({query:q, variables:{id:+malId}})});
   if(!r.ok) throw new Error('anilist '+r.status);
   const d = (await r.json()).data?.Media;
   if(!d) return {status:'none'};
-  if(d.nextAiringEpisode) return {status:'airing', date:dkey(new Date(d.nextAiringEpisode.airingAt*1000)), ep:d.nextAiringEpisode.episode};
-  return {status: d.status==='RELEASING' ? 'airing' : (d.status==='FINISHED' ? 'finished' : 'none')};
+  // epTotal = nombre d'épisodes DÉJÀ sortis (le prochain à diffuser moins 1 ; sinon le total quand la diffusion est finie).
+  if(d.nextAiringEpisode) return {status:'airing', date:dkey(new Date(d.nextAiringEpisode.airingAt*1000)), ep:d.nextAiringEpisode.episode, epTotal:Math.max(0, d.nextAiringEpisode.episode-1)};
+  return {status: d.status==='RELEASING' ? 'airing' : (d.status==='FINISHED' ? 'finished' : 'none'), epTotal: d.episodes||0};
 }
 // Série : TMDB → prochain épisode à diffuser (date + saison/épisode).
 async function fetchSeriesNext(tmdbId){
@@ -2287,8 +2367,9 @@ async function fetchSeriesNext(tmdbId){
   if(!r.ok) throw new Error('tmdb '+r.status);
   const d = await r.json();
   const n = d.next_episode_to_air;
-  if(n && n.air_date) return {status:'airing', date:n.air_date, ep:n.episode_number, season:n.season_number};
-  return {status: d.status==='Returning Series' ? 'airing' : 'finished'};
+  // epTotal = nombre d'épisodes connus de la série (croît à chaque diffusion).
+  if(n && n.air_date) return {status:'airing', date:n.air_date, ep:n.episode_number, season:n.season_number, epTotal: d.number_of_episodes||0};
+  return {status: d.status==='Returning Series' ? 'airing' : 'finished', epTotal: d.number_of_episodes||0};
 }
 // --- DLC de jeux (via le Worker perso) : Steam (par appid) ou IGDB (par slug), parsés du lien de la fiche ---
 function steamAppIdFromLink(link){ const m=/store\.steampowered\.com\/app\/(\d+)/.exec(link||''); return m?m[1]:null; }
@@ -2318,14 +2399,16 @@ const RELEASES = {
   cache:{}, last:0, offline:!navigator.onLine, busy:false,
   load(){ try{ const o=JSON.parse(localStorage.getItem('mc_releases')||'{}'); this.cache=o.cache||{}; this.last=o.last||0; }catch(e){ this.cache={}; this.last=0; } },
   store(){ localStorage.setItem('mc_releases', JSON.stringify({cache:this.cache, last:this.last})); },
-  // Fiches concernées : statut « En cours » avec un lien exploitable (anime MAL / série TMDB).
-  relevant(){ return items.filter(i=> i.status==='en_cours'
+  // Fiches concernées : statut « En cours » OU « En pause » avec un lien exploitable (anime MAL / série TMDB).
+  // (la pause est incluse pour détecter qu'un nouvel épisode est sorti et la faire repasser « en cours »)
+  relevant(){ return items.filter(i=> (i.status==='en_cours' || i.status==='pause')
     && ((i.type==='anime' && malIdFromLink(i.link)) || (i.type==='film' && tmdbTvIdFromLink(i.link))) ); },
   // Actualise depuis le réseau. Retourne false si hors-ligne (on garde le cache).
   async refresh(){
     if(this.busy) return false;
     if(!navigator.onLine){ this.offline=true; return false; }
     this.offline=false; this.busy=true;
+    let touched=false;
     try{
       const rel = this.relevant();
       for(const it of rel){
@@ -2333,11 +2416,18 @@ const RELEASES = {
           const res = it.type==='anime' ? await fetchAnimeNext(malIdFromLink(it.link))
                                          : await fetchSeriesNext(tmdbTvIdFromLink(it.link));
           this.cache[it.id] = {...res, fetchedAt:Date.now()};
+          // Point 9 : garder le nombre d'épisodes à jour (le total ne fait que croître),
+          // puis recalculer le statut avec la diffusion fraîche (un nouvel épisode peut faire pause → en cours).
+          const beforeStatus=it.status, beforeTotal=it.progTotal||0;
+          if(res.epTotal && res.epTotal > (it.progTotal||0)) it.progTotal = res.epTotal;
+          maybeAutoStatus(it);
+          if(it.status!==beforeStatus || (it.progTotal||0)!==beforeTotal){ it.updated=Date.now(); await DB.put(it); touched=true; }
         }catch(e){ /* échec ponctuel → on conserve l'ancien cache de cette fiche */ }
         await new Promise(r=>setTimeout(r, 350));   // throttle poli (AniList/TMDB)
       }
-      for(const id in this.cache){ if(!rel.find(x=>x.id===id)) delete this.cache[id]; }   // purge fiches terminées/supprimées
+      for(const id in this.cache){ if(!rel.find(x=>x.id===id)) delete this.cache[id]; }   // purge fiches non suivies/supprimées
       this.last = Date.now(); this.store();
+      if(touched){ render(); await afterChange(); }   // épisodes/statuts modifiés → rafraîchir l'UI + synchroniser
       return true;
     } finally { this.busy=false; }
   },
@@ -2756,6 +2846,7 @@ async function save(){
   if(dup){
     if(!confirm('⚠️ Cet élément existe déjà (même titre, même type et même image).\n\nL\'ajouter quand même ?')) return;
   }
+  maybeAutoStatus(item);   // auto-statut : recalcule le statut depuis la progression si l'option est active
   await DB.put(item);
   if(existing){ Object.assign(existing,item); } else { items.push(item); }
   logActivity();         // ajout/édition compte comme activité du jour (streak)
@@ -3385,6 +3476,12 @@ function openTheme(){ THEME.load(); renderThemePanel(); $('#themeOverlay').class
 // =========================================================
 function wireProfile(){
   const pp = $('#profilePic'); if(pp) pp.onclick = ()=>$('#profilePicInput').click();
+  const pd = $('#profilePicDel'); if(pd) pd.onclick = (e)=>{
+    e.stopPropagation();
+    if(!confirm('Supprimer la photo de profil ?')) return;
+    PROFILE.cfg.pic = ''; PROFILE.cfg.updated = Date.now(); PROFILE.store();
+    renderHeaderProfile(); afterChange(); openStats();
+  };
   const pn = $('#profileName'); if(pn) pn.onchange = ()=>{ PROFILE.cfg.name = pn.value.trim().slice(0,24); PROFILE.cfg.updated = Date.now(); PROFILE.store(); renderHeaderProfile(); afterChange(); };
 }
 // Met à jour le widget profil du header (avatar + niveau) — appelé à chaque rendu.
@@ -3856,6 +3953,7 @@ function profileBanner(){
   return `<div class="profile-box ${rankClass(P.level)}${banClass}"${banAttr}>${banMedia}
     <button class="profile-pic" id="profilePic" title="Changer la photo">
       <span class="pp-img av-${PROFILE.cfg.frame||'none'}">${pic ? `<img src="${pic}" alt="">` : '👤'}</span><span class="lvl">Niv.${P.level}</span>
+      ${pic ? `<span class="pp-del" id="profilePicDel" title="Supprimer la photo">✕</span>` : ''}
     </button>
     <div class="profile-main">
       <input class="profile-name ${nameFxClass(PROFILE.cfg.nameFx)}" id="profileName" maxlength="24" value="${escapeHtml(PROFILE.cfg.name||'')}" placeholder="Ton pseudo">
@@ -4195,6 +4293,7 @@ function openSync(){
   $('#cfgToken').value = SYNC.cfg.token||'';
   $('#cfgAuto').checked= !!SYNC.cfg.auto;
   META.load(); $('#cfgTmdbKey').value = META.cfg.tmdbKey||''; $('#cfgRawgKey').value = META.cfg.rawgKey||''; $('#cfgProxyUrl').value = META.cfg.proxyUrl||'';
+  $('#cfgAutoStatus').checked = !!PROFILE.cfg.autoStatus;
   $('#cfgVaultPass').value = ''; vaultStatus();
   SYNC.status(SYNC.cfg.last? 'Dernière synchro : '+new Date(SYNC.cfg.last).toLocaleString() : '');
   updateModeUI();
@@ -4256,6 +4355,12 @@ function bind(){
   $('#saveBtn').onclick = save;
   $('#deleteBtn').onclick = removeItem;
   $('#fType').onchange = updateFormType;
+  $('#fAbandonBtn').onclick = ()=>{
+    const sel=$('#fStatus');
+    // Abandonner = override manuel ; Réactiver = on remet « à faire » (le statut auto sera recalculé à l'enregistrement).
+    sel.value = sel.value==='abandon' ? 'a_faire' : 'abandon';
+    updateAbandonBtn();
+  };
   $('#metaBtn').onclick = runMetaSearch;
   $('#metaSrcSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
     metaGameSrc = b.dataset.src;
@@ -4447,6 +4552,14 @@ function bind(){
   $('#syncOverlay').onmousedown = e=>{ syncDownTarget = e.target; };
   $('#syncOverlay').onclick = e=>{ if(e.target===$('#syncOverlay') && syncDownTarget===$('#syncOverlay')) $('#syncOverlay').classList.remove('open'); };
   $('#cfgMode').onchange = e=>{ SYNC.cfg.mode = e.target.value; updateModeUI(); };
+  // Auto-statut : enregistre tout de suite (synchronisé), recalcule les fiches existantes, et propage.
+  $('#cfgAutoStatus').onchange = async e=>{
+    PROFILE.cfg.autoStatus = e.target.checked;
+    PROFILE.cfg.updated = Date.now(); PROFILE.store();
+    await recomputeAllStatuses();
+    await afterChange();
+    toast(e.target.checked ? '⚙️ Auto-statut activé' : 'Auto-statut désactivé');
+  };
   $('#cfgPickFile').onclick = async ()=>{ await LOCAL.pick(); updateModeUI(); };
   $('#localSaveBtn').onclick = ()=>LOCAL.downloadSave();
   $('#cfgTest').onclick = ()=>{ saveSyncCfg(); SYNC.test(); };
@@ -4502,6 +4615,7 @@ function bind(){
     if(SYNC.cfg.auto && SYNC.configured()) SYNC.run(true);
   }
   RELEASES.load();
+  if(autoStatusEnabled()) await recomputeAllStatuses();   // option auto : aligne les statuts existants sur la progression
 })();
 </script>
 </body>

@@ -169,16 +169,75 @@ async function steamApp(url){
 }
 
 // ---- DLC / extensions d'un jeu (calendrier des sorties jeux) ----
-// /dlc?steam=APPID  (liste + « à venir », date parfois imprécise)  OU  /dlc?slug=IGDB_SLUG (dates précises)
+// /dlc?steam=APPID  OU  /dlc?slug=IGDB_SLUG
+// Interroge LES DEUX sources (Steam + IGDB) : à partir d'un seul identifiant, le Worker
+// retrouve l'autre via IGDB, récupère les DLC des deux côtés, puis fusionne en dédoublonnant
+// par nom (un DLC identique des deux sources n'est gardé qu'une fois ; les différents sont tous gardés).
 async function gameDlc(url, env){
-  const steam = url.searchParams.get('steam');
-  const slug  = url.searchParams.get('slug');
-  if(steam) return json({ source: 'steam', items: await steamDlc(steam) });
-  if(slug){
-    if(!(env.TWITCH_ID && env.TWITCH_SECRET)) return json({ source: 'igdb', error: 'IGDB non configuré', items: [] });
-    return json({ source: 'igdb', items: await igdbDlc(slug, env) });
+  let appid = url.searchParams.get('steam');
+  let slug  = url.searchParams.get('slug');
+  const hasIgdb = !!(env.TWITCH_ID && env.TWITCH_SECRET);
+
+  // Résolution croisée de l'identifiant manquant (best-effort, nécessite IGDB).
+  let resolveErr = null;
+  if(hasIgdb){
+    try{
+      if(slug && !appid)      appid = await steamAppIdFromIgdbSlug(slug, env);
+      else if(appid && !slug) slug  = await igdbSlugFromSteamAppId(appid, env);
+    }catch(e){ resolveErr = String((e && e.message) || e); }
   }
-  return json({ items: [] });
+  if(!appid && !slug) return json({ items: [] });
+
+  // Chaque source est best-effort : l'échec de l'une n'empêche pas l'autre.
+  let steamItems = [], igdbItems = [];
+  if(appid)           { try{ steamItems = await steamDlc(appid); }catch(e){} }
+  if(slug && hasIgdb) { try{ igdbItems  = await igdbDlc(slug, env); }catch(e){} }
+
+  // IGDB prioritaire (dates ISO précises) : en cas de doublon, c'est sa version qui est gardée.
+  const items = mergeDlcLists(igdbItems, steamItems);
+  return json({ source: 'merged', hasIgdb, resolvedAppid: appid || null, resolvedSlug: slug || null,
+    resolveErr, steamCount: steamItems.length, igdbCount: igdbItems.length, items });
+}
+// Nom normalisé pour comparer deux titres de DLC (casse, espaces et ponctuation ignorés).
+function normName(s){ return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+// Fusionne deux listes de DLC en supprimant les doublons (même nom normalisé). `primary` gagne à égalité.
+function mergeDlcLists(primary, secondary){
+  const out = [], seen = new Set();
+  for(const d of [...(primary || []), ...(secondary || [])]){
+    const k = normName(d.title);
+    if(!k || seen.has(k)) continue;
+    seen.add(k); out.push(d);
+  }
+  return out;
+}
+// En-têtes d'authentification IGDB communs.
+async function igdbHeaders(env){
+  const tok = await igdbToken(env);
+  return { 'Client-ID': env.TWITCH_ID, 'Authorization': 'Bearer ' + tok, 'Accept': 'application/json' };
+}
+// Retrouve l'appid Steam à partir d'un slug IGDB.
+// 1) external_games catégorie 1 = Steam (uid = appid) ; 2) repli : toute URL Steam trouvée
+//    dans external_games.url ou websites.url (robuste aux évolutions du champ « category »).
+async function steamAppIdFromIgdbSlug(slug, env){
+  const headers = await igdbHeaders(env);
+  const body = `fields external_games.category, external_games.uid, external_games.url, websites.url; where slug = "${slug.replace(/"/g, '')}"; limit 1;`;
+  const r = await fetch('https://api.igdb.com/v4/games', { method: 'POST', headers, body });
+  if(!r.ok) return null;
+  const g = (await r.json())[0]; if(!g) return null;
+  const ext = (g.external_games || []).find(e => e.category === 1 && e.uid);
+  if(ext) return String(ext.uid);
+  const urls = [...(g.external_games || []).map(e => e.url || ''), ...(g.websites || []).map(w => w.url || '')];
+  for(const u of urls){ const m = /store\.steampowered\.com\/app\/(\d+)/.exec(u); if(m) return m[1]; }
+  return null;
+}
+// Retrouve le slug IGDB à partir d'un appid Steam (external_games catégorie 1 = Steam).
+async function igdbSlugFromSteamAppId(appid, env){
+  const headers = await igdbHeaders(env);
+  const body = `fields game.slug; where category = 1 & uid = "${appid}"; limit 1;`;
+  const r = await fetch('https://api.igdb.com/v4/external_games', { method: 'POST', headers, body });
+  if(!r.ok) return null;
+  const d = await r.json();
+  return (d[0] && d[0].game && d[0].game.slug) || null;
 }
 // IGDB : dates PRÉCISES (timestamps) pour DLC + extensions, sorties et à venir.
 async function igdbDlc(slug, env){

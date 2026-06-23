@@ -1,0 +1,18 @@
+recherche des dlc sur steam et l'autre et comparer les 2 si identique suprimer un des deux si diferane les met les deux
+rajouté la supretion des dlc mis automatiquement
+rajouté le supretion de la photo de profile
+avoir un bouton dans les parametre pour activer l'automatisation des changement de statu (a fair / en cour ect.)
+pour abandonné c'est le seul que on peux mettre manuelement si auto activé
+serie / anime / manga :
+	si episode 0/10 mettre automatiquement a faire
+	si episode 1/10 mettre automatiquement en cour
+	si episode 10/10 mais futur episode prévue automatiquement au pause
+	si episode 10/10 mais pas futur episode prévue mettre automatiquement Terminer
+jeu
+	si tout a 0 (0% et 0/100 succet) a fair
+	si tout a 0 (5% et 0/100 succet ou 0% et 5/100 succet) en cour
+	si tout a 0 (100% et 100/100 succet) terminer
+autre
+	laisser manuel car trop compliquer
+	
+si des nouveau episode du serie sort verifier que la serie soit a jour sur le nombre d'episode
