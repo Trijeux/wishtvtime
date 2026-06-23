@@ -43,6 +43,31 @@ function json(obj, status = 200){
   return withCORS(new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json' } }));
 }
 
+// ---- Proxy d'images : /img?url=… ----
+// Récupère une image côté serveur (pas de CORS navigateur, contourne les blocages de proxys publics
+// comme AniList) et la renvoie avec les en-têtes CORS. Réservé aux images http/https.
+async function imgProxy(url){
+  const target = url.searchParams.get('url');
+  if(!target) return json({ error: 'paramètre url manquant' }, 400);
+  let t; try{ t = new URL(target); }catch(e){ return json({ error: 'url invalide' }, 400); }
+  if(t.protocol !== 'http:' && t.protocol !== 'https:') return json({ error: 'protocole non autorisé' }, 400);
+  // Referer = domaine racine de la source (contourne les protections « hotlink » de certains CDN, ex. AniList).
+  const root = t.hostname.split('.').slice(-2).join('.');
+  const r = await fetch(target, { headers: {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+    'Accept': 'image/avif,image/webp,image/*,*/*;q=0.8',
+    'Referer': t.protocol + '//' + root + '/',
+  } });
+  if(!r.ok) return json({ error: 'upstream ' + r.status, target }, 502);
+  const ct = r.headers.get('Content-Type') || 'image/jpeg';
+  if(!ct.startsWith('image')) return json({ error: 'la cible n\'est pas une image (' + ct + ')' }, 415);
+  const h = new Headers();
+  h.set('Content-Type', ct);
+  h.set('Cache-Control', 'public, max-age=86400');
+  h.set('Access-Control-Allow-Origin', '*');
+  return new Response(r.body, { status: 200, headers: h });
+}
+
 export default {
   async fetch(req, env){
     if(req.method === 'OPTIONS') return withCORS(new Response(null, { status: 204 }));
@@ -52,7 +77,8 @@ export default {
       if(path.endsWith('/games'))     return await searchGames(url, env);
       if(path.endsWith('/steam/app')) return await steamApp(url);
       if(path.endsWith('/dlc'))       return await gameDlc(url, env);
-      return json({ ok: true, msg: 'WishTvTime proxy. Endpoints : /games?q=…  ·  /steam/app?appid=…  ·  /dlc?steam=APPID | ?slug=IGDB_SLUG' });
+      if(path.endsWith('/img'))       return await imgProxy(url);
+      return json({ ok: true, msg: 'WishTvTime proxy. Endpoints : /games?q=…  ·  /steam/app?appid=…  ·  /dlc?steam=APPID | ?slug=IGDB_SLUG  ·  /img?url=…' });
     }catch(e){
       return json({ error: String((e && e.message) || e) }, 500);
     }

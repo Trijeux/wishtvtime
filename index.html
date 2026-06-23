@@ -356,6 +356,11 @@
   .dlc-badge.out{background:var(--bg2); color:var(--txt-dim)}
   .dlc-del{flex:0 0 auto; background:none; border:none; color:var(--txt-dim); cursor:pointer; font-size:14px; padding:0 2px}
   .dlc-del:hover{color:var(--bad)}
+  /* Décharge +18 */
+  .nsfw-gate{font-size:14px; line-height:1.5}
+  .nsfw-gate ul{margin:8px 0; padding-left:18px}
+  .nsfw-gate li{margin:4px 0}
+  .nsfw-gate p{margin:10px 0}
   .dlc-actions{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px}
   .dlc-add{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px}
   .dlc-add input[type=text]{flex:1; min-width:140px}
@@ -932,6 +937,31 @@
   </div>
 </div>
 
+<!-- Modal Décharge / contrat +18 -->
+<div class="overlay" id="nsfwOverlay">
+  <div class="modal">
+    <h2><span>🔞 Accès au contenu adulte (+18)</span><button class="x" id="closeNsfw">✕</button></h2>
+    <div class="nsfw-gate">
+      <p>En activant ce mode, vous déclarez sur l'honneur :</p>
+      <ul>
+        <li>✓ être <b>majeur(e)</b> (18 ans ou plus) selon la loi de votre pays ou lieu de résidence ;</li>
+        <li>✓ consulter ce contenu de votre <b>plein gré</b>, dans un cadre <b>privé et légal</b> ;</li>
+        <li>✓ que l'accès à du contenu pour adultes y est <b>autorisé</b>.</li>
+      </ul>
+      <p>Ce mode affiche dans la recherche en ligne des résultats <b>hentai (anime &amp; manga)</b> pouvant comporter de la <b>nudité</b> et un <b>contenu sexuellement explicite</b>.</p>
+      <p><b>Responsabilité.</b> Vous utilisez cette fonctionnalité sous votre <b>seule et entière responsabilité</b>. Le créateur de l'application <b>décline toute responsabilité</b> quant à l'accès, l'usage ou la légalité de ce contenu dans votre juridiction. Les données proviennent de <b>services tiers</b> (bases externes) : le créateur n'en est ni l'auteur ni l'hébergeur.</p>
+      <p class="help">Vous pourrez désactiver ce mode à tout moment dans votre profil.</p>
+    </div>
+    <div class="modal-actions">
+      <div></div>
+      <div class="right">
+        <button class="btn" id="nsfwCancel" type="button">Annuler</button>
+        <button class="btn btn-primary" id="nsfwAccept" type="button">✅ J'ai 18 ans et j'accepte</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Synchro -->
 <div class="overlay" id="syncOverlay">
   <div class="modal">
@@ -1071,6 +1101,14 @@ const statusById = id => STATUSES.find(s=>s.id===id) || STATUSES[0];
 const UNIT = {anime:'épisodes', manga:'tomes', jeu:'%', film:'épisodes', autre:'éléments'};
 const unitOf = type => UNIT[type] || '';
 
+// ---- Masquage du contenu adulte quand le mode +18 est OFF ----
+// Basé sur un MARQUEUR INTERNE i.adult (booléen, invisible pour l'utilisateur), posé automatiquement
+// à l'import (AniList isAdult / genre Hentai de la source). Volontairement INDÉPENDANT des tags visibles :
+// si l'utilisateur met le tag « Hentai » à la main sur autre chose, ça ne le masque PAS.
+function isAdultItem(i){ return !!i.adult; }
+// Fiches visibles selon le mode +18. Renvoie toujours un nouveau tableau (tri sûr).
+function shownItems(){ return (typeof PROFILE!=='undefined' && PROFILE.cfg && PROFILE.cfg.nsfw) ? items.slice() : items.filter(i=>!isAdultItem(i)); }
+
 // ---- Automatisation des statuts (réglage synchronisé : PROFILE.cfg.autoStatus) ----
 // Quand l'auto est activé, le statut d'une fiche est recalculé selon sa progression.
 // Seul « Abandonné » reste réglable à la main (override) ; le type « autre » reste 100% manuel.
@@ -1174,6 +1212,7 @@ let curRating = 0;
 let curTags = [];
 let curPlatforms = [];
 let curLists = [];
+let curAdult = false;    // marqueur interne « contenu adulte » de la fiche en cours d'édition (masquage si +18 OFF)
 const filters = {q:'', type:'', status:'', tag:'', list:'', platform:'', year:'', fav:false, sort:'recent'};
 
 // Suppressions : id -> timestamp(ms). Sert à propager les suppressions entre appareils.
@@ -1304,7 +1343,7 @@ function refreshTagFilter(){
 }
 
 function applyFilters(){
-  let list = items.slice();
+  let list = shownItems();   // masque le contenu adulte si +18 OFF
   if(filters.q){ const q=filters.q.toLowerCase(); list=list.filter(i=>i.title.toLowerCase().includes(q)); }
   if(filters.type)     list = list.filter(i=>i.type===filters.type);
   if(filters.status)   list = list.filter(i=>i.status===filters.status);
@@ -1760,7 +1799,7 @@ const PROFILE = {
   // nameFx=id NAME_FX ; particles=id PARTICLES ; mascot=id MASCOTS ; mascotSkin=index du modèle alternatif ; banner=id BG_PRESETS|'custom' ; bannerImg=dataURL si perso
   // bgPreset=id BG_PRESETS (fond d'écran équipé) ; themePreset=id THEME_PRESETS (thème équipé) ; accent/accent2=couleur d'accent. Ces 3 « habillages » sont synchronisés (avant : per-device dans mc_theme).
   // activity={ 'AAAA-MM-JJ': {n:nbActions, prog:{itemId:deltaCumulé}} } → journal daté (streak + heatmap + détail au clic). Ancien format (nombre brut) toléré. Fusionné jour par jour à la synchro (cf SYNC.run).
-  cfg:{ name:'', pic:null, frame:'none', nameFx:'none', particles:'none', mascot:'none', mascotSkin:0, banner:'', bannerImg:null, bgPreset:'', themePreset:'', accent:'', accent2:'', activity:{}, autoStatus:false, updated:0 },
+  cfg:{ name:'', pic:null, frame:'none', nameFx:'none', particles:'none', mascot:'none', mascotSkin:0, banner:'', bannerImg:null, bgPreset:'', themePreset:'', accent:'', accent2:'', activity:{}, autoStatus:false, nsfw:false, nsfwAcceptedAt:0, updated:0 },
   load(){ try{ Object.assign(this.cfg, JSON.parse(localStorage.getItem('mc_profile')||'{}')); }catch(e){} },
   store(){ localStorage.setItem('mc_profile', JSON.stringify(this.cfg)); },
 };
@@ -2212,6 +2251,7 @@ const DEV_ENABLED = false;
 function mcDev(){ return DEV_ENABLED ? localStorage.getItem('mc_devlvl') : null; }   // source unique : niveau dev forcé, ou null si l'outil est désactivé
 // Barème XP + niveau (passer au niv. suivant coûte 100×niveau ; cumul pour atteindre L = 50·L·(L-1)).
 function computeXP(){
+  const items = shownItems();   // +18 OFF : le contenu adulte ne compte pas dans l'XP
   let xp = 0;
   items.forEach(i=>{
     if(i.type==='anime'||i.type==='film') xp += (i.progCur||0)*10;
@@ -2234,6 +2274,7 @@ function levelTitle(lvl){ let name = TITLES[0][1]; for(const [min,n] of TITLES){
 function nextTitle(lvl){ return TITLES.find(([min])=>min>lvl) || null; }   // [niveau, nom] du prochain titre, ou null
 // Badges / succès débloqués selon la collection.
 function computeBadges(){
+  const items = shownItems();   // +18 OFF : le contenu adulte ne compte pas dans les badges
   const n = items.length;
   const done = items.filter(i=>i.status==='termine').length;
   const ep   = items.filter(i=>i.type==='anime'||i.type==='film').reduce((a,i)=>a+(i.progCur||0),0);
@@ -2322,12 +2363,21 @@ async function loadTmdbGenres(key){
 // On passe par une passerelle qui ajoute les en-têtes CORS + redimensionne côté serveur
 // (sinon `fetch` cross-origin ne peut pas lire le contenu). Plusieurs replis pour la fiabilité.
 async function urlToDataURL(url, max=600){
-  const gw = u => '?url='+encodeURIComponent(u)+'&w='+max+'&output=jpg&q=82';
+  const params = '&w='+max+'&output=jpg&q=82';
+  const enc = encodeURIComponent(url);
+  // Format weserv « ssl:hôte/chemin » (sans https://) : plus fiable que l'URL complète pour certaines
+  // sources HTTPS comme AniList (s4.anilist.co). On tente les deux formats sur les deux miroirs.
+  const noScheme = url.replace(/^https?:\/\//,'');
+  const sslHost = encodeURIComponent('ssl:'+noScheme);
   const candidates = [
-    'https://wsrv.nl/'+gw(url),
-    'https://images.weserv.nl/'+gw(url),
-    url,                              // tentative directe (si la source autorise déjà CORS)
+    'https://i0.wp.com/'+noScheme+'?w='+max+'&ssl=1',   // Photon (Automattic) : CORS + resize, IP hors-Cloudflare → récupère AniList
+    'https://wsrv.nl/?url='+sslHost+params,              // weserv : compresse (MAL/TMDB/Steam)
+    'https://wsrv.nl/?url='+enc+params,
   ];
+  // Proxy perso (Worker) : fiable pour MAL/TMDB/Steam (mais bloqué par AniList).
+  let base=(META.cfg.proxyUrl||'').trim().replace(/\/+$/,''); if(base && !/^https?:\/\//i.test(base)) base='https://'+base;
+  if(base) candidates.push(base+'/img?url='+enc);
+  candidates.push(url);              // tentative directe (si la source autorise déjà CORS)
   for(const src of candidates){
     try{
       const r = await fetch(src, {mode:'cors'});
@@ -2401,7 +2451,7 @@ const RELEASES = {
   store(){ localStorage.setItem('mc_releases', JSON.stringify({cache:this.cache, last:this.last})); },
   // Fiches concernées : statut « En cours » OU « En pause » avec un lien exploitable (anime MAL / série TMDB).
   // (la pause est incluse pour détecter qu'un nouvel épisode est sorti et la faire repasser « en cours »)
-  relevant(){ return items.filter(i=> (i.status==='en_cours' || i.status==='pause')
+  relevant(){ return shownItems().filter(i=> (i.status==='en_cours' || i.status==='pause')
     && ((i.type==='anime' && malIdFromLink(i.link)) || (i.type==='film' && tmdbTvIdFromLink(i.link))) ); },
   // Actualise depuis le réseau. Retourne false si hors-ligne (on garde le cache).
   async refresh(){
@@ -2434,10 +2484,53 @@ const RELEASES = {
 };
 
 // Recherche en ligne selon le type. Retourne une liste normalisée de propositions.
+// Recherche AniList (GraphQL, sans clé) pour anime/manga — utilisée en mode +18 (meilleure couverture hentai).
+// Renvoie le MÊME format normalisé que Jikan. Le lien pointe vers MyAnimeList (via idMal) quand dispo,
+// pour que le calendrier/épisodes (qui parse l'id MAL) continue de fonctionner ; sinon lien AniList.
+async function searchAnilist(query, type){
+  const gql = `query($q:String){Page(perPage:8){media(search:$q,type:${type},sort:SEARCH_MATCH){idMal isAdult title{english romaji} startDate{year} episodes volumes coverImage{extraLarge large} description genres averageScore siteUrl}}}`;
+  const r = await fetch('https://graphql.anilist.co', {method:'POST',
+    headers:{'Content-Type':'application/json','Accept':'application/json'},
+    body:JSON.stringify({query:gql, variables:{q:query}})});
+  if(!r.ok) throw new Error('AniList '+r.status);
+  const list = (await r.json()).data?.Page?.media || [];
+  const isAnime = type==='ANIME';
+  return list.map(m=>{
+    const idMal = m.idMal || null;
+    const res = {
+      title:    (m.title?.english || m.title?.romaji || '').trim(),
+      year:     m.startDate?.year || null,
+      total:    isAnime ? (m.episodes||0) : (m.volumes||0),   // anime = épisodes, manga = tomes
+      image:    m.coverImage?.extraLarge || m.coverImage?.large || '',   // AniList (souvent bloqué aux proxys) — remplacé au clic
+      synopsis: (m.description||'').replace(/<[^>]+>/g,'').trim(),        // AniList renvoie du HTML léger
+      genres:   m.genres || [],
+      platforms:[],
+      rating:   m.averageScore ? Math.min(5, Math.round(m.averageScore/20)) : 0,   // /100 → /5
+      link:     idMal ? `https://myanimelist.net/${isAnime?'anime':'manga'}/${idMal}` : (m.siteUrl||''),
+      adult:    !!m.isAdult || (m.genres||[]).some(g=>/hentai/i.test(g)),   // marqueur interne (masquage si +18 OFF)
+    };
+    // Au clic : on récupère la jaquette MyAnimeList (via idMal) comme REPLI (imageAlt), au cas où
+    // l'image AniList (principale) échoue. fetchDetails est awaité AVANT le téléchargement dans applyMeta.
+    if(idMal){
+      res.fetchDetails = async ()=>{
+        try{
+          const jr = await fetch(`https://api.jikan.moe/v4/${isAnime?'anime':'manga'}/${idMal}`);
+          if(jr.ok){
+            const jd = (await jr.json()).data, jpg = jd?.images?.jpg;
+            if(jpg?.large_image_url || jpg?.image_url) res.imageAlt = jpg.large_image_url || jpg.image_url;
+          }
+        }catch(e){ /* pas de repli MAL → on garde juste l'image AniList */ }
+      };
+    }
+    return res;
+  });
+}
 async function searchMeta(type, query){
   const src = metaSourceFor(type);
   if(src==='jikan-anime'){
-    const r = await fetch('https://api.jikan.moe/v4/anime?q='+encodeURIComponent(query)+'&limit=8&sfw');
+    if(PROFILE.cfg.nsfw) return await searchAnilist(query, 'ANIME');   // +18 → AniList (couverture hentai)
+    // &sfw exclut le contenu adulte : on le retire quand le mode +18 est activé (hentai anime).
+    const r = await fetch('https://api.jikan.moe/v4/anime?q='+encodeURIComponent(query)+'&limit=8'+(PROFILE.cfg.nsfw?'':'&sfw'));
     if(!r.ok) throw new Error('HTTP '+r.status);
     const d = await r.json();
     return (d.data||[]).map(a=>{
@@ -2463,7 +2556,9 @@ async function searchMeta(type, query){
     });
   }
   if(src==='jikan-manga'){
-    const r = await fetch('https://api.jikan.moe/v4/manga?q='+encodeURIComponent(query)+'&limit=8&sfw');
+    if(PROFILE.cfg.nsfw) return await searchAnilist(query, 'MANGA');   // +18 → AniList (couverture hentai)
+    // &sfw exclut le contenu adulte : on le retire quand le mode +18 est activé (hentai manga).
+    const r = await fetch('https://api.jikan.moe/v4/manga?q='+encodeURIComponent(query)+'&limit=8'+(PROFILE.cfg.nsfw?'':'&sfw'));
     if(!r.ok) throw new Error('HTTP '+r.status);
     const d = await r.json();
     return (d.data||[]).map(a=>({
@@ -2631,6 +2726,7 @@ async function applyMeta(m){
   $('#fLink').value      = m.link    || '';
   $('#fComment').value   = m.synopsis || '';
   curTags      = (m.genres||[]).filter(Boolean);    renderTags();
+  curAdult     = !!m.adult;   // full reset : le marqueur adulte vient de la source (AniList isAdult)
   curPlatforms = (m.platforms||[]).filter(Boolean); renderPlatforms();
   $('#metaResults').classList.remove('open');
   // Jaquette : on REMPLACE par celle de la source. Tentatives dans l'ordre (Steam : verticale puis paysage).
@@ -2762,6 +2858,7 @@ function openModal(id){
   metaGameSrc = 'auto';
   $('#metaSrcSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on', x.dataset.src==='auto'));
   curTags = item?.tags ? [...item.tags] : [];
+  curAdult = !!item?.adult;   // conserve le marqueur adulte de la fiche existante
   curLists = item?.lists ? [...item.lists] : [];
   renderLists();
   setRating(item?.rating || 0);
@@ -2815,6 +2912,7 @@ async function save(){
     status: $('#fStatus').value,
     rating: curRating,
     tags: curTags,
+    adult: curAdult,                                   // marqueur interne (masquage si +18 OFF)
     lists: curLists,
     comment: $('#fComment').value.trim(),
     progCur, progTotal, achCur, achTotal,
@@ -3976,7 +4074,7 @@ function openRandom(){
   $('#randomOverlay').classList.add('open');
 }
 function rndPool(){
-  let list = items.slice();
+  let list = shownItems();   // masque le contenu adulte si +18 OFF
   if(rndCfg.type)   list = list.filter(i=>i.type===rndCfg.type);
   if(rndCfg.status) list = list.filter(i=>i.status===rndCfg.status);
   if(rndCfg.fav)    list = list.filter(i=>i.fav);
@@ -4012,7 +4110,17 @@ function drawRandom(){
     tick++;
   }, 80);
 }
+// Mode +18 : active/désactive le contenu adulte (synchronisé). Mémorise la date d'acceptation de la décharge.
+function setNsfw(on){
+  PROFILE.cfg.nsfw = !!on;
+  if(on && !PROFILE.cfg.nsfwAcceptedAt) PROFILE.cfg.nsfwAcceptedAt = Date.now();
+  PROFILE.cfg.updated = Date.now(); PROFILE.store();
+  try{ localStorage.setItem('mc_lastlvl', String(computeXP().level)); }catch(e){}   // évite un faux level-up au basculement (l'XP change car le contenu adulte (dé)compte)
+  render(); renderHeaderProfile(); afterChange(); openStats();
+}
+function openNsfwGate(){ $('#nsfwOverlay').classList.add('open'); }
 function openStats(){
+  const items = shownItems();   // +18 OFF : les stats ignorent le contenu adulte
   const n = items.length;
   const h = [profileBanner()];
   if(n===0){
@@ -4135,6 +4243,12 @@ function openStats(){
         <span class="bg-name">${p.name}${ok?'':' · '+p.lvl}</span></button>`;
     }).join('')}</div>`);
 
+  // 🔞 Mode +18 (contenu adulte hentai anime/manga) — opt-in synchronisé, décharge acceptée une seule fois
+  const nsfwOn = !!PROFILE.cfg.nsfw;
+  h.push(`<div class="stat-h">🔞 Mode +18</div>
+    <label class="switch"><input type="checkbox" id="statNsfw" ${nsfwOn?'checked':''}> Afficher le contenu adulte (hentai anime &amp; manga)</label>
+    <div class="help">Retire le filtre tout-public sur la recherche en ligne d'anime et de manga. Réservé aux 18 ans et plus.${PROFILE.cfg.nsfwAcceptedAt?` <span style="color:var(--ok)">✓ Décharge acceptée.</span>`:''}</div>`);
+
   // 🎯 Objectif annuel (réglable, stocké en local) — basé sur les fiches terminées datées cette année
   const year = new Date().getFullYear();
   const goal = +localStorage.getItem('mc_goal') || 0;
@@ -4237,6 +4351,12 @@ function openStats(){
     if(b.dataset.banner==='custom'){ $('#bannerImgInput').click(); return; }   // perso → choisir une image
     PROFILE.cfg.banner = b.dataset.banner; PROFILE.cfg.updated = Date.now(); PROFILE.store(); renderHeaderProfile(); afterChange(); openStats();
   });
+  const nsw = $('#statNsfw'); if(nsw) nsw.onchange = ()=>{
+    if(nsw.checked){
+      if(PROFILE.cfg.nsfwAcceptedAt) setNsfw(true);       // décharge déjà acceptée → activation directe
+      else { nsw.checked = false; openNsfwGate(); }        // 1re activation → décharge obligatoire
+    } else setNsfw(false);
+  };
   const db = $('#devBtn'); if(db) db.onclick = devToggle;
   const dl = $('#devLvl'); if(dl) dl.onchange = ()=>devSetLevel(dl.value);
   $('#statsOverlay').classList.add('open');
@@ -4409,6 +4529,13 @@ function bind(){
   let rndDown=null;
   $('#randomOverlay').onmousedown = e=>{ rndDown = e.target; };
   $('#randomOverlay').onclick = e=>{ if(e.target===$('#randomOverlay') && rndDown===$('#randomOverlay')) $('#randomOverlay').classList.remove('open'); };
+  // Décharge +18 : Annuler/✕ ferment sans activer ; Accepter mémorise la décharge et active le mode.
+  $('#closeNsfw').onclick  = ()=>$('#nsfwOverlay').classList.remove('open');
+  $('#nsfwCancel').onclick = ()=>$('#nsfwOverlay').classList.remove('open');
+  $('#nsfwAccept').onclick = ()=>{ $('#nsfwOverlay').classList.remove('open'); setNsfw(true); };
+  let nsfwDown=null;
+  $('#nsfwOverlay').onmousedown = e=>{ nsfwDown = e.target; };
+  $('#nsfwOverlay').onclick = e=>{ if(e.target===$('#nsfwOverlay') && nsfwDown===$('#nsfwOverlay')) $('#nsfwOverlay').classList.remove('open'); };
   $('#profilePicInput').onchange = async e=>{
     if(e.target.files[0]){
       PROFILE.cfg.pic = await compress(e.target.files[0], 256, .85);   // petit avatar
