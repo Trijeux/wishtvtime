@@ -1682,22 +1682,52 @@ async function fetchJikanEpisodes(malId){
   }
   return out;
 }
-// Cascade d'import des épisodes d'une fiche : Jikan (id MAL) d'abord, Kitsu en DERNIER recours.
-// Renvoie {title, kind, episodes, airing, source, kitsuId?}. Respecte l'ordre des sources (Kitsu = secours).
+// TMDB (séries) : toutes les saisons + épisodes (n° + nom + date). La bonne source pour les séries occidentales
+// (Rick et Morty…), PAS Jikan/Kitsu qui sont des bases anime. Inclut la saison 0 (« Spéciaux »).
+async function importTmdbSeasons(tmdbId){
+  const key = META.cfg.tmdbKey; if(!key) throw new Error('NO_KEY');
+  const r = await fetch(`https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${key}&language=fr-FR`);
+  if(!r.ok) throw new Error('tmdb '+r.status);
+  const d = await r.json();
+  const ongoing = d.status==='Returning Series' || d.in_production;
+  const lastNum = Math.max(0, ...(d.seasons||[]).map(x=>x.season_number||0));
+  const seasons = [...(d.seasons||[])].sort((a,b)=>((a.season_number||0)||99)-((b.season_number||0)||99));   // Spéciaux (saison 0) en dernier
+  const out=[];
+  for(const s of seasons){
+    if(!s.episode_count) continue;                       // saison vide → on saute
+    const num = s.season_number||0, special = num===0;   // saison 0 = Spéciaux
+    const sr = await fetch(`https://api.themoviedb.org/3/tv/${tmdbId}/season/${num}?api_key=${key}&language=fr-FR`);
+    if(!sr.ok) continue;
+    const eps = ((await sr.json()).episodes||[]).map(e=>({num:e.episode_number, title:e.name||'', date:e.air_date||null, watched:false}));
+    if(!eps.length) continue;
+    out.push({title: special ? (s.name||'Spéciaux') : `Saison ${num}`, kind: special ? 'Spécial' : 'Saison',
+      progCur:0, progTotal:eps.length, episodes:eps,
+      airing: ongoing && num===lastNum});   // seule la dernière saison d'une série en cours reste « en cours »
+    await new Promise(res=>setTimeout(res,120));
+  }
+  if(!out.length) throw new Error('aucun épisode TMDB');
+  return out;
+}
+// Cascade d'import des épisodes. Renvoie {seasons:[…], source, kitsuId?} — une liste de saisons (série TMDB = plusieurs).
+// Série (type film + lien TMDB) → TMDB. Anime → Jikan (id MAL) d'abord, Kitsu en DERNIER recours.
 async function importEpisodesCascade(i){
+  const tmdbId = tmdbTvIdFromLink(i.link);
+  if(i.type==='film' && tmdbId){   // Série → TMDB (saisons complètes)
+    return {seasons: await importTmdbSeasons(tmdbId), source:'TMDB'};
+  }
   const malId = malIdFromLink(i.link);
   if(malId){   // 1) Jikan / MyAnimeList (si la fiche a un lien MAL)
     try{
       const meta = await fetchJikanMeta(malId);
       const eps  = await fetchJikanEpisodes(malId);
-      if(eps.length) return {title:meta.title||i.title, kind:kindFromSubtype(meta.subtype), episodes:eps, airing:meta.airing, source:'Jikan'};
+      if(eps.length) return {seasons:[{title:meta.title||i.title, kind:kindFromSubtype(meta.subtype), progCur:0, progTotal:eps.length, episodes:eps, airing:meta.airing}], source:'Jikan'};
     }catch(e){ /* Jikan KO (souvent 504) → on descend vers Kitsu */ }
   }
   const ent = await resolveKitsuEntry(i);   // 2) Kitsu (dernier recours)
   if(ent){
     const eps = await fetchKitsuEpisodes(ent.id, ent.episodeCount);
-    if(eps.length) return {title:ent.title, kind:kindFromSubtype(ent.subtype), episodes:eps,
-      airing:(ent.status==='current'||ent.status==='upcoming'), source:'Kitsu', kitsuId:ent.id};
+    if(eps.length) return {seasons:[{title:ent.title, kind:kindFromSubtype(ent.subtype), progCur:0, progTotal:eps.length, episodes:eps,
+      airing:(ent.status==='current'||ent.status==='upcoming')}], source:'Kitsu', kitsuId:ent.id};
   }
   throw new Error('aucune source ne liste les épisodes');
 }
@@ -1785,7 +1815,7 @@ function seasonSectionHtml(i){
     ${list.length ? `<div class="dlc-list">${rows}</div>` : `<p class="help" style="margin:4px 0">Aucune saison enregistrée.</p>`}
     <div class="dlc-actions">
       <button class="btn" id="seFetch" type="button">🔄 Récupérer les épisodes</button>
-      <button class="btn" id="seRelatedBtn" type="button">🧩 Récupérer les saisons liées</button>
+      ${i.type==='anime' ? `<button class="btn" id="seRelatedBtn" type="button">🧩 Récupérer les saisons liées</button>` : ''}
       <button class="btn" id="seAddToggle" type="button">➕ Ajouter</button>
     </div>
     <div class="help" id="seStatus"></div>
@@ -1810,12 +1840,18 @@ function wireSeasons(i){
     try{
       const r = await importEpisodesCascade(i);
       if(r.kitsuId) i.kitsuId = r.kitsuId;   // mémorise l'id Kitsu (dates / prochain épisode)
-      // upsert : si la saison existe déjà, on la met à jour (nouveaux épisodes) en gardant les cochés.
-      const act = upsertSeason(i, {title:r.title, kind:r.kind, progCur:0, progTotal:r.episodes.length, episodes:r.episodes, airing:r.airing});
-      seasonOpen.add(i.seasons.findIndex(s=>(s.title||'').toLowerCase()===(r.title||'').toLowerCase()));   // déplie la saison
-      toast(act==='add' ? '✅ '+r.episodes.length+' épisode(s) importé(s) via '+r.source : '🔄 Saison mise à jour ('+r.episodes.length+' ép., cases conservées)');
+      // upsert chaque saison (série TMDB = plusieurs) : met à jour si déjà présente en gardant les cochés.
+      let added=0, updated=0, totalEp=0;
+      for(const se of r.seasons){ totalEp+=(se.episodes?.length||0); (upsertSeason(i, se)==='add')?added++:updated++; }
+      seasonOpen.add(i.seasons.findIndex(s=>(s.title||'').toLowerCase()===(r.seasons[0].title||'').toLowerCase()));   // déplie la 1re
+      toast(`✅ ${r.seasons.length} saison(s), ${totalEp} épisode(s) via ${r.source}`+(updated?` (${updated} mise(s) à jour)`:''));
       await save();
-    }catch(e){ fb.disabled=false; fb.textContent=seFetchLabel; $('#seStatus').textContent='❌ '+(e.message||'échec')+' — renomme la fiche ou ajoute son lien MAL/Kitsu.'; }
+    }catch(e){
+      fb.disabled=false; fb.textContent=seFetchLabel;
+      $('#seStatus').textContent = e.message==='NO_KEY'
+        ? '🔑 Ajoute ta clé TMDB (⚙️ Paramètres) pour récupérer les épisodes de séries.'
+        : '❌ '+(e.message||'échec')+' — renomme la fiche ou ajoute son lien TMDB/MAL/Kitsu.';
+    }
   };
   // Import des saisons/films/OVA LIÉS : propose une liste à cocher (pour écarter recaps/collabs/spin-offs).
   const roleLabel={sequel:'Suite',prequel:'Préquelle',side_story:'Histoire annexe',parent_story:'Histoire principale',summary:'Résumé',spinoff:'Spin-off',alternative_version:'Version alternative',full_story:'Histoire complète',other:'Autre'};
