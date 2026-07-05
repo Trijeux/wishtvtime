@@ -2525,52 +2525,100 @@ async function searchAnilist(query, type){
     return res;
   });
 }
+// Essaie plusieurs sources dans l'ordre : renvoie le résultat de la PREMIÈRE qui répond, et passe à la
+// suivante si l'une échoue (panne réseau, HTTP 4xx/5xx, API désactivée…). Mémorise la source réellement
+// utilisée pour l'affichage. Sert de secours quand une base tombe (MAL, AniList… peuvent être HS en même temps).
+async function metaTry(sources){
+  let lastErr;
+  for(const [name, fn] of sources){
+    try{ const res = await fn(); metaLastSource = name; return res; }
+    catch(e){ lastErr = e; console.warn('[meta] source «'+name+'» indisponible :', e.message); }
+  }
+  throw lastErr || new Error('aucune source disponible');
+}
+// Recherche Kitsu (kitsu.io, gratuit, sans clé) pour anime/manga — 3ᵉ source de secours, INDÉPENDANTE de
+// MyAnimeList et d'AniList. Renvoie le MÊME format normalisé. Pas d'id MAL exposé → le lien pointe vers Kitsu
+// (le « prochain épisode » auto ne marchera pas pour ces fiches : dégradation acceptable en dernier recours).
+async function searchKitsu(query, kind){          // kind : 'anime' | 'manga'
+  const isAnime = kind==='anime';
+  const r = await fetch('https://kitsu.io/api/edge/'+kind+'?filter[text]='+encodeURIComponent(query)+'&page[limit]=8',
+    {headers:{'Accept':'application/vnd.api+json'}});
+  if(!r.ok) throw new Error('Kitsu '+r.status);
+  const list = (await r.json()).data || [];
+  return list.map(it=>{
+    const a = it.attributes || {}, t = a.titles || {};
+    const rate = a.averageRating ? +a.averageRating : 0;   // note /100 (chaîne)
+    return {
+      title:    (t.en || t.en_jp || a.canonicalTitle || '').trim(),
+      year:     a.startDate ? +a.startDate.slice(0,4) : null,
+      total:    isAnime ? (a.episodeCount||0) : (a.volumeCount||0),   // anime = épisodes, manga = tomes
+      image:    a.posterImage?.large || a.posterImage?.medium || a.posterImage?.small || '',
+      synopsis: a.synopsis || '',
+      genres:   [], platforms:[],
+      rating:   rate ? Math.min(5, Math.round(rate/20)) : 0,          // /100 → /5
+      link:     'https://kitsu.io/'+kind+'/'+(a.slug || it.id),
+      adult:    a.ageRating==='R18',    // R18 = explicite → masqué hors +18 (comme &sfw)
+    };
+  });
+}
 async function searchMeta(type, query){
   const src = metaSourceFor(type);
   if(src==='jikan-anime'){
-    if(PROFILE.cfg.nsfw) return await searchAnilist(query, 'ANIME');   // +18 → AniList (couverture hentai)
-    // &sfw exclut le contenu adulte : on le retire quand le mode +18 est activé (hentai anime).
-    const r = await fetch('https://api.jikan.moe/v4/anime?q='+encodeURIComponent(query)+'&limit=8'+(PROFILE.cfg.nsfw?'':'&sfw'));
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    const d = await r.json();
-    return (d.data||[]).map(a=>{
-      const m = {
+    const nsfw = PROFILE.cfg.nsfw;
+    const clean = arr => nsfw ? arr : arr.filter(m=>!m.adult);   // hors +18 : on masque l'adulte (comme &sfw)
+    // Cascade de secours : si une base tombe (MAL/Jikan, AniList… peuvent être HS EN MÊME TEMPS), on essaie
+    // la suivante. En +18 on privilégie AniList (couverture hentai) ; sinon Jikan (MAL) d'abord.
+    const jikan = ['jikan', async()=>{
+      const r = await fetch('https://api.jikan.moe/v4/anime?q='+encodeURIComponent(query)+'&limit=8'+(nsfw?'':'&sfw'));
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      const d = await r.json();
+      return (d.data||[]).map(a=>{
+        const m = {
+          title:    a.title_english || a.title,
+          year:     a.year || (a.aired?.from ? new Date(a.aired.from).getFullYear() : null),
+          total:    a.episodes || 0,
+          image:    a.images?.jpg?.large_image_url || a.images?.jpg?.image_url || '',
+          synopsis: a.synopsis || '',
+          genres:   (a.genres||[]).map(g=>g.name),
+          platforms:[],
+          rating:   a.score ? Math.min(5, Math.round(a.score/2)) : 0,   // /10 → /5 arrondi
+          link:     a.url || '',
+        };
+        // Au clic : plateformes de streaming (Crunchyroll, ADN, Netflix…) via l'endpoint dédié de Jikan.
+        m.fetchDetails = async ()=>{
+          try{
+            const sr = await fetch('https://api.jikan.moe/v4/anime/'+a.mal_id+'/streaming');
+            if(sr.ok){ const sd = await sr.json(); m.platforms = (sd.data||[]).map(s=>s.name).filter(Boolean); }
+          }catch(e){}
+        };
+        return m;
+      });
+    }];
+    const anilist = ['anilist', async()=>clean(await searchAnilist(query, 'ANIME'))];
+    const kitsu   = ['kitsu',   async()=>clean(await searchKitsu(query, 'anime'))];
+    return await metaTry(nsfw ? [anilist, jikan, kitsu] : [jikan, anilist, kitsu]);
+  }
+  if(src==='jikan-manga'){
+    const nsfw = PROFILE.cfg.nsfw;
+    const clean = arr => nsfw ? arr : arr.filter(m=>!m.adult);   // hors +18 : on masque l'adulte
+    const jikan = ['jikan', async()=>{
+      const r = await fetch('https://api.jikan.moe/v4/manga?q='+encodeURIComponent(query)+'&limit=8'+(nsfw?'':'&sfw'));
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      const d = await r.json();
+      return (d.data||[]).map(a=>({
         title:    a.title_english || a.title,
-        year:     a.year || (a.aired?.from ? new Date(a.aired.from).getFullYear() : null),
-        total:    a.episodes || 0,
+        year:     a.published?.from ? new Date(a.published.from).getFullYear() : null,
+        total:    a.volumes || 0,                       // progression manga = tomes (volumes)
         image:    a.images?.jpg?.large_image_url || a.images?.jpg?.image_url || '',
         synopsis: a.synopsis || '',
         genres:   (a.genres||[]).map(g=>g.name),
-        platforms:[],
         rating:   a.score ? Math.min(5, Math.round(a.score/2)) : 0,   // /10 → /5 arrondi
         link:     a.url || '',
-      };
-      // Au clic : plateformes de streaming (Crunchyroll, ADN, Netflix…) via l'endpoint dédié de Jikan.
-      m.fetchDetails = async ()=>{
-        try{
-          const sr = await fetch('https://api.jikan.moe/v4/anime/'+a.mal_id+'/streaming');
-          if(sr.ok){ const sd = await sr.json(); m.platforms = (sd.data||[]).map(s=>s.name).filter(Boolean); }
-        }catch(e){}
-      };
-      return m;
-    });
-  }
-  if(src==='jikan-manga'){
-    if(PROFILE.cfg.nsfw) return await searchAnilist(query, 'MANGA');   // +18 → AniList (couverture hentai)
-    // &sfw exclut le contenu adulte : on le retire quand le mode +18 est activé (hentai manga).
-    const r = await fetch('https://api.jikan.moe/v4/manga?q='+encodeURIComponent(query)+'&limit=8'+(PROFILE.cfg.nsfw?'':'&sfw'));
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    const d = await r.json();
-    return (d.data||[]).map(a=>({
-      title:    a.title_english || a.title,
-      year:     a.published?.from ? new Date(a.published.from).getFullYear() : null,
-      total:    a.volumes || 0,                       // progression manga = tomes (volumes)
-      image:    a.images?.jpg?.large_image_url || a.images?.jpg?.image_url || '',
-      synopsis: a.synopsis || '',
-      genres:   (a.genres||[]).map(g=>g.name),
-      rating:   a.score ? Math.min(5, Math.round(a.score/2)) : 0,   // /10 → /5 arrondi
-      link:     a.url || '',
-    }));
+      }));
+    }];
+    const anilist = ['anilist', async()=>clean(await searchAnilist(query, 'MANGA'))];
+    const kitsu   = ['kitsu',   async()=>clean(await searchKitsu(query, 'manga'))];
+    return await metaTry(nsfw ? [anilist, jikan, kitsu] : [jikan, anilist, kitsu]);
   }
   if(src==='tmdb'){
     const key = META.cfg.tmdbKey;
