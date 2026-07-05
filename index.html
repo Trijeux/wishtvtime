@@ -380,6 +380,9 @@
   .ep-add{display:flex; gap:6px; margin-top:4px}
   .ep-add input{flex:1; min-width:0; font-size:12.5px; padding:3px 6px}
   .rel-pick{display:flex; flex-direction:column; gap:5px; border:1px solid var(--line); border-radius:8px; padding:9px; margin-top:8px}
+  .se-move{background:none; border:none; cursor:pointer; color:var(--txt-dim); font-size:11px; padding:0 1px; flex:0 0 auto; line-height:1}
+  .se-move:hover{color:var(--accent)}
+  .se-move:disabled{opacity:.25; cursor:default}
   /* ---------- Profil + Niveau/XP ---------- */
   .profile-box{display:flex; gap:14px; align-items:center; border-radius:16px; padding:16px; margin-bottom:18px;
     color:#fff; background:linear-gradient(135deg,var(--accent),var(--accent-2))}
@@ -1616,6 +1619,23 @@ function syncDatesFromSeasons(i){
 }
 // Sous-type d'une source (Kitsu « TV/movie/OVA/special/ONA » ou Jikan « TV/Movie/OVA… ») → notre « kind » de saison.
 const kindFromSubtype = st => { st=(st||'').toLowerCase(); return st==='movie'?'Film':(st==='ova'||st==='ona')?'OVA':st==='special'?'Spécial':'Saison'; };
+// Ajoute une saison OU met à jour celle qui a le même titre (re-récupération) : on garde les épisodes cochés
+// (par n°), on reprend noms/dates frais et on ajoute les nouveaux épisodes. Renvoie 'add' ou 'update'.
+function upsertSeason(i, fresh){
+  i.seasons = i.seasons || [];
+  const idx = i.seasons.findIndex(s=>(s.title||'').toLowerCase()===(fresh.title||'').toLowerCase());
+  if(idx<0){ i.seasons.push(fresh); return 'add'; }
+  const old = i.seasons[idx];
+  if(fresh.episodes && fresh.episodes.length){
+    const seen = new Map((old.episodes||[]).map(e=>[e.num, e.watched]));   // mémorise « vu » par n°
+    old.episodes = fresh.episodes.map(e=>({...e, watched: !!seen.get(e.num)}));
+    old.progTotal = old.episodes.length;
+    old.progCur   = old.episodes.filter(e=>e.watched).length;
+  }
+  old.kind = fresh.kind || old.kind;
+  old.airing = fresh.airing;
+  return 'update';
+}
 // Retrouve l'entrée Kitsu correspondant à la fiche : id mémorisé > slug du lien kitsu.io > recherche par titre.
 async function resolveKitsuEntry(i){
   const KH={headers:{'Accept':'application/vnd.api+json'}};
@@ -1727,14 +1747,17 @@ function episodesPanelHtml(s, idx){
 function seasonSectionHtml(i){
   if(seasonOpenFor!==i.id){ seasonOpen=new Set(); seasonOpenFor=i.id; }   // change de fiche → on replie tout
   const list = i.seasons||[];
+  const last = list.length-1;
   const rows = list.map((s,idx)=>{
+    // Réorganisation : ▲ monte / ▼ descend cette saison dans la liste.
+    const mv = `<button class="se-move" data-se-up="${idx}" title="Monter"${idx===0?' disabled':''}>▲</button><button class="se-move" data-se-down="${idx}" title="Descendre"${idx===last?' disabled':''}>▼</button>`;
     const single = seasonTot(s) <= 1 && !seasonEps(s);   // film / one-shot → simple « vu »
     if(single){
       const seen = (s.progCur||0) >= 1;
       return `<div class="dlc-row">
         <label class="dlc-own" title="Vu"><input type="checkbox" data-se-seen="${idx}" ${seen?'checked':''}></label>
         <span class="dlc-name ${seen?'owned':''}">${seasonIcon(s.kind)} ${escapeHtml(s.title)} <span class="dlc-kind">${escapeHtml(s.kind||'Film')}</span></span>
-        <button class="dlc-del" data-se-del="${idx}" title="Retirer">✕</button>
+        ${mv}<button class="dlc-del" data-se-del="${idx}" title="Retirer">✕</button>
       </div>`;
     }
     const open = seasonOpen.has(idx), hasEps = !!seasonEps(s), pc=seasonDone(s), pt=seasonTot(s);
@@ -1754,7 +1777,7 @@ function seasonSectionHtml(i){
       <button class="se-exp" data-se-exp="${idx}" title="${open?'Replier':'Voir les épisodes'}">${open?'▾':'▸'}</button>
       <span class="dlc-name">${seasonIcon(s.kind)} ${escapeHtml(s.title)} <span class="dlc-kind">${escapeHtml(s.kind||'Saison')}</span></span>
       ${counter}
-      <button class="dlc-del" data-se-del="${idx}" title="Retirer">✕</button>
+      ${mv}<button class="dlc-del" data-se-del="${idx}" title="Retirer">✕</button>
     </div>${open ? episodesPanelHtml(s, idx) : ''}`;
   }).join('');
   return `<div class="season-sec">
@@ -1787,9 +1810,10 @@ function wireSeasons(i){
     try{
       const r = await importEpisodesCascade(i);
       if(r.kitsuId) i.kitsuId = r.kitsuId;   // mémorise l'id Kitsu (dates / prochain épisode)
-      i.seasons=[...(i.seasons||[]), {title:r.title, kind:r.kind, progCur:0, progTotal:r.episodes.length, episodes:r.episodes, airing:r.airing}];
-      seasonOpen.add(i.seasons.length-1);   // déplie la saison importée
-      toast('✅ '+r.episodes.length+' épisode(s) importé(s) via '+r.source);
+      // upsert : si la saison existe déjà, on la met à jour (nouveaux épisodes) en gardant les cochés.
+      const act = upsertSeason(i, {title:r.title, kind:r.kind, progCur:0, progTotal:r.episodes.length, episodes:r.episodes, airing:r.airing});
+      seasonOpen.add(i.seasons.findIndex(s=>(s.title||'').toLowerCase()===(r.title||'').toLowerCase()));   // déplie la saison
+      toast(act==='add' ? '✅ '+r.episodes.length+' épisode(s) importé(s) via '+r.source : '🔄 Saison mise à jour ('+r.episodes.length+' ép., cases conservées)');
       await save();
     }catch(e){ fb.disabled=false; fb.textContent=seFetchLabel; $('#seStatus').textContent='❌ '+(e.message||'échec')+' — renomme la fiche ou ajoute son lien MAL/Kitsu.'; }
   };
@@ -1808,21 +1832,20 @@ function wireSeasons(i){
       const chosen=[...box.querySelectorAll('[data-cand]')].filter(c=>c.checked).map(c=>cands[+c.dataset.cand]);
       if(!chosen.length){ $('#relStatus').textContent='Rien de coché.'; return; }
       $('#relImport').disabled=true;
-      const existing=new Set((i.seasons||[]).map(s=>(s.title||'').toLowerCase()));
-      let added=0;
+      let added=0, updated=0;
       for(let n=0;n<chosen.length;n++){
         const c=chosen[n]; $('#relStatus').textContent=`⏳ Import ${n+1}/${chosen.length} : ${c.title}…`;
-        if(existing.has((c.title||'').toLowerCase())) continue;   // déjà présent → on saute
         try{
           const detailed = c.kind!=='Film' && c.episodeCount>0;
           const eps = detailed ? await fetchKitsuEpisodes(c.id, c.episodeCount) : [];
           const season = eps.length
             ? {title:c.title, kind:c.kind, progCur:0, progTotal:eps.length, episodes:eps, airing:c.airing}
             : {title:c.title, kind:c.kind, progCur:0, progTotal:(c.kind==='Film'?1:(c.episodeCount||1)), episodes:[], airing:c.airing};
-          i.seasons=[...(i.seasons||[]), season]; added++;
+          // upsert : met à jour si déjà présent (garde les cochés), sinon ajoute.
+          (upsertSeason(i, season)==='add') ? added++ : updated++;
         }catch(e){ /* cet élément échoue → on continue */ }
       }
-      box.innerHTML=''; toast('✅ '+added+' saison(s)/film(s) importé(s)');
+      box.innerHTML=''; toast(`✅ ${added} ajoutée(s)`+(updated?`, ${updated} mise(s) à jour`:''));
       await save();
     };
   }
@@ -1860,6 +1883,9 @@ function wireSeasons(i){
   // Films / one-shots : case « vu »
   sec.querySelectorAll('[data-se-seen]').forEach(c=>c.onchange=async()=>{ const s=i.seasons[+c.dataset.seSeen]; s.progTotal=s.progTotal||1; s.progCur=c.checked?s.progTotal:0; await save(); });
   sec.querySelectorAll('[data-se-del]').forEach(b=>b.onclick=async()=>{ i.seasons.splice(+b.dataset.seDel,1); seasonOpen=new Set(); await save(); });
+  // Réorganiser ▲▼ (échange avec la saison voisine). On replie tout pour éviter les index dépliés décalés.
+  sec.querySelectorAll('[data-se-up]').forEach(b=>b.onclick=async()=>{ const k=+b.dataset.seUp; if(k>0){ [i.seasons[k-1],i.seasons[k]]=[i.seasons[k],i.seasons[k-1]]; seasonOpen=new Set(); await save(); } });
+  sec.querySelectorAll('[data-se-down]').forEach(b=>b.onclick=async()=>{ const k=+b.dataset.seDown; if(k<i.seasons.length-1){ [i.seasons[k],i.seasons[k+1]]=[i.seasons[k+1],i.seasons[k]]; seasonOpen=new Set(); await save(); } });
   // Compteur manuel ± (saison sans épisodes détaillés)
   sec.querySelectorAll('.qbtn[data-se]').forEach(b=>b.onclick=async()=>{ const s=i.seasons[+b.dataset.se]; let v=(s.progCur||0)+(+b.dataset.seD); v=Math.max(0,v); if(s.progTotal>0&&v>s.progTotal)v=s.progTotal; s.progCur=v; await save(); });
   // ± « dans l'ordre » sur une saison détaillée : ＋ coche le 1er épisode non vu, − décoche le dernier vu.
