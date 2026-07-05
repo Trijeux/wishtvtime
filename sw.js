@@ -2,7 +2,7 @@
    Stratégie : "réseau d'abord" pour le document (pour récupérer les mises à jour),
    "cache d'abord" pour les fichiers statiques (icônes…). Les appels réseau externes
    (API GitHub) ne sont jamais interceptés -> ils passent directement au réseau. */
-const CACHE = 'wishtvtime-v1';
+const CACHE = 'wishtvtime-v2';
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
