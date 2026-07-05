@@ -364,6 +364,22 @@
   .dlc-actions{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px}
   .dlc-add{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px}
   .dlc-add input[type=text]{flex:1; min-width:140px}
+  /* ---------- Saisons / Films / OVA (fiche anime & série) ---------- */
+  .se-count{display:flex; align-items:center; gap:5px; flex:0 0 auto}
+  .se-count .qinput{width:52px}
+  .se-count b{white-space:nowrap}
+  .season-total{font-size:12.5px; color:var(--txt-dim); margin-top:8px}
+  .se-exp{background:none; border:none; cursor:pointer; color:var(--txt-dim); font-size:12px; padding:0 3px; flex:0 0 auto; line-height:1}
+  .ep-panel{display:flex; flex-direction:column; gap:4px; margin:2px 0 8px 24px; padding-left:10px; border-left:2px solid var(--line)}
+  .ep-row{display:flex; align-items:center; gap:8px; font-size:12.5px; margin:0; cursor:pointer}
+  .ep-row input[type=checkbox]{width:auto; margin:0; flex:0 0 auto}
+  .ep-num{flex:0 0 auto; color:var(--txt-dim); min-width:52px}
+  .ep-name{flex:1; min-width:0; font-size:12.5px; padding:2px 6px}
+  .ep-name.done{color:var(--ok)}
+  .ep-date{flex:0 0 auto; color:var(--txt-dim); font-size:11px; white-space:nowrap}
+  .ep-add{display:flex; gap:6px; margin-top:4px}
+  .ep-add input{flex:1; min-width:0; font-size:12.5px; padding:3px 6px}
+  .rel-pick{display:flex; flex-direction:column; gap:5px; border:1px solid var(--line); border-radius:8px; padding:9px; margin-top:8px}
   /* ---------- Profil + Niveau/XP ---------- */
   .profile-box{display:flex; gap:14px; align-items:center; border-radius:16px; padding:16px; margin-bottom:18px;
     color:#fff; background:linear-gradient(135deg,var(--accent),var(--accent-2))}
@@ -1572,6 +1588,300 @@ function wireDlc(i){
   sec.querySelectorAll('[data-dlc-del]').forEach(b=>b.onclick = async ()=>{ i.dlcs.splice(+b.dataset.dlcDel,1); await save(); });
 }
 
+// ---- Saisons / Films / OVA regroupés DANS la fiche (anime & série) ----
+// Chaque entrée : {title, kind, progCur, progTotal, episodes:[]}. progTotal<=1 → « film/one-shot » (case « vu ») ;
+// sinon compteur d'épisodes X/Y. episodes[] (n° + nom + vu) sera rempli à l'étape suivante (dépliage).
+const seasonIcon = k => k==='Film'?'🎬':k==='OVA'?'🎞️':k==='Spécial'?'✨':'📺';
+let seasonOpen = new Set();   // index des saisons dépliées (vue détail courante)
+let seasonOpenFor = null;     // id de la fiche à laquelle correspond seasonOpen (reset au changement de fiche)
+const seasonEps = s => (s.episodes && s.episodes.length) ? s.episodes : null;
+const seasonDone = s => { const e=seasonEps(s); return e ? e.filter(x=>x.watched).length : Math.min(s.progCur||0,(s.progTotal||0)||(s.progCur||0)); };
+const seasonTot  = s => { const e=seasonEps(s); return e ? e.length : (s.progTotal||0); };
+// Recopie le total des saisons dans la progression de la fiche (pour la grille, les stats, l'XP et l'auto-statut).
+function syncFicheFromSeasons(i){
+  if(!((i.type==='anime'||i.type==='film') && i.seasons && i.seasons.length)) return;
+  i.progCur   = i.seasons.reduce((a,s)=>a+seasonDone(s),0);
+  i.progTotal = i.seasons.reduce((a,s)=>a+seasonTot(s),0);
+  syncDatesFromSeasons(i);
+  maybeAutoStatus(i);   // ex. tout vu → « Terminé » si l'option auto-statut est active
+}
+// Dates de la fiche déduites des épisodes : Sortie = 1er épisode ; Terminé le = dernier épisode SI la série est
+// finie (aucune saison « en cours ») — sinon on laisse « Terminé le » vide. Ne touche à rien sans dates connues.
+function syncDatesFromSeasons(i){
+  const dates = (i.seasons||[]).flatMap(s=>(s.episodes||[]).map(e=>e.date).filter(Boolean)).sort();
+  if(!dates.length) return;                 // aucune date connue → on ne modifie pas année / dateDone
+  i.year = +dates[0].slice(0,4) || i.year;  // Sortie = année du plus ancien épisode
+  const airing = (i.seasons||[]).some(s=>s.airing);
+  i.dateDone = airing ? '' : dates[dates.length-1];   // fini → date du dernier épisode ; en cours → vide
+}
+// Sous-type d'une source (Kitsu « TV/movie/OVA/special/ONA » ou Jikan « TV/Movie/OVA… ») → notre « kind » de saison.
+const kindFromSubtype = st => { st=(st||'').toLowerCase(); return st==='movie'?'Film':(st==='ova'||st==='ona')?'OVA':st==='special'?'Spécial':'Saison'; };
+// Retrouve l'entrée Kitsu correspondant à la fiche : id mémorisé > slug du lien kitsu.io > recherche par titre.
+async function resolveKitsuEntry(i){
+  const KH={headers:{'Accept':'application/vnd.api+json'}};
+  const norm = a => a ? {id:a.id, title:(a.attributes.titles?.en||a.attributes.canonicalTitle||i.title), episodeCount:a.attributes.episodeCount||0, subtype:a.attributes.subtype, status:a.attributes.status} : null;
+  if(i.kitsuId){
+    const r=await fetch('https://kitsu.io/api/edge/anime/'+i.kitsuId, KH);
+    if(r.ok){ return norm((await r.json()).data); }
+  }
+  const m=(i.link||'').match(/kitsu\.(?:io|app)\/anime\/([^/?#]+)/i);
+  const q = m ? 'filter[slug]='+encodeURIComponent(m[1]) : 'filter[text]='+encodeURIComponent(i.title);
+  const r=await fetch('https://kitsu.io/api/edge/anime?'+q+'&page[limit]=1', KH);
+  if(!r.ok) throw new Error('Kitsu '+r.status);
+  return norm(((await r.json()).data||[])[0]);
+}
+// Récupère la liste des épisodes (n° + nom + date) d'une entrée Kitsu, en paginant (garde-fou 60 pages).
+async function fetchKitsuEpisodes(id, total){
+  const KH={headers:{'Accept':'application/vnd.api+json'}}, out=[], lim=20;
+  for(let p=0, off=0; p<60; p++, off+=lim){
+    const r=await fetch(`https://kitsu.io/api/edge/anime/${id}/episodes?page[limit]=${lim}&page[offset]=${off}&sort=number&fields[episodes]=number,canonicalTitle,airdate`, KH);
+    if(!r.ok) break;
+    const data=(await r.json()).data||[];
+    data.forEach((e,k)=>{ const a=e.attributes||{}; out.push({num:a.number||(off+k+1), title:a.canonicalTitle||'', date:a.airdate||null, watched:false}); });
+    if(data.length<lim || (total && out.length>=total)) break;
+    await new Promise(res=>setTimeout(res,120));   // throttle poli
+  }
+  return out;
+}
+// Jikan (MyAnimeList) : méta d'un anime (titre, type, statut) par id MAL.
+async function fetchJikanMeta(malId){
+  const r=await fetch('https://api.jikan.moe/v4/anime/'+malId); if(!r.ok) throw new Error('HTTP '+r.status);
+  const d=(await r.json()).data||{};
+  return {title:d.title_english||d.title||'', subtype:d.type||'TV', episodeCount:d.episodes||0, airing:!!d.airing};
+}
+// Jikan : liste des épisodes (n° + titre + date) par id MAL, paginée (100/page).
+async function fetchJikanEpisodes(malId){
+  const out=[];
+  for(let page=1; page<=15; page++){
+    const r=await fetch('https://api.jikan.moe/v4/anime/'+malId+'/episodes?page='+page);
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const j=await r.json();
+    (j.data||[]).forEach(e=>out.push({num:e.mal_id, title:e.title||e.title_romanji||'', date:e.aired?e.aired.slice(0,10):null, watched:false}));
+    if(!j.pagination?.has_next_page) break;
+    await new Promise(res=>setTimeout(res,400));   // throttle poli (Jikan)
+  }
+  return out;
+}
+// Cascade d'import des épisodes d'une fiche : Jikan (id MAL) d'abord, Kitsu en DERNIER recours.
+// Renvoie {title, kind, episodes, airing, source, kitsuId?}. Respecte l'ordre des sources (Kitsu = secours).
+async function importEpisodesCascade(i){
+  const malId = malIdFromLink(i.link);
+  if(malId){   // 1) Jikan / MyAnimeList (si la fiche a un lien MAL)
+    try{
+      const meta = await fetchJikanMeta(malId);
+      const eps  = await fetchJikanEpisodes(malId);
+      if(eps.length) return {title:meta.title||i.title, kind:kindFromSubtype(meta.subtype), episodes:eps, airing:meta.airing, source:'Jikan'};
+    }catch(e){ /* Jikan KO (souvent 504) → on descend vers Kitsu */ }
+  }
+  const ent = await resolveKitsuEntry(i);   // 2) Kitsu (dernier recours)
+  if(ent){
+    const eps = await fetchKitsuEpisodes(ent.id, ent.episodeCount);
+    if(eps.length) return {title:ent.title, kind:kindFromSubtype(ent.subtype), episodes:eps,
+      airing:(ent.status==='current'||ent.status==='upcoming'), source:'Kitsu', kitsuId:ent.id};
+  }
+  throw new Error('aucune source ne liste les épisodes');
+}
+// Saisons / films / OVA liés (Kitsu media-relationships). Très bruité → on écarte manga/personnages/adaptations,
+// on PRÉ-COCHE les suites/préquelles/histoires annexes, et on laisse le reste décoché (l'utilisateur tranche).
+async function fetchKitsuRelated(kitsuId){
+  const KH={headers:{'Accept':'application/vnd.api+json'}};
+  const r=await fetch('https://kitsu.io/api/edge/anime/'+kitsuId+'/media-relationships?include=destination&page[limit]=20', KH);
+  if(!r.ok) throw new Error('Kitsu '+r.status);
+  const j=await r.json();
+  const byId={}; (j.included||[]).forEach(x=>{ if(x.type==='anime') byId[x.id]=x; });
+  const CHECK=new Set(['sequel','prequel','side_story','parent_story']);   // pré-cochés (vraies parties de l'œuvre)
+  const SKIP =new Set(['character','adaptation']);                          // jamais des saisons
+  const out=[];
+  (j.data||[]).forEach(rel=>{
+    const role=rel.attributes?.role, dest=rel.relationships?.destination?.data;
+    if(!dest || dest.type!=='anime' || SKIP.has(role)) return;
+    const a=byId[dest.id]; if(!a) return; const at=a.attributes||{};
+    out.push({ id:a.id, role, title:(at.titles?.en||at.canonicalTitle||''), kind:kindFromSubtype(at.subtype),
+      episodeCount:at.episodeCount||0, year:at.startDate?at.startDate.slice(0,4):'', start:at.startDate||'',
+      airing:(at.status==='current'||at.status==='upcoming'), check:CHECK.has(role) });
+  });
+  out.sort((a,b)=>(a.start||'9999').localeCompare(b.start||'9999'));   // ordre chronologique
+  return out;
+}
+// Panneau déplié : liste des épisodes (n° + nom + case), cochables dans le désordre.
+function episodesPanelHtml(s, idx){
+  const eps = seasonEps(s);
+  if(!eps){
+    const n = s.progTotal||0;
+    return `<div class="ep-panel">
+      ${n>0 ? `<button class="btn" data-se-gen="${idx}" type="button">📃 Générer les ${n} épisodes</button>`
+            : `<p class="help" style="margin:2px 0">Ajoute des épisodes ci-dessous.</p>`}
+      <div class="ep-add"><input type="text" data-se-epadd="${idx}" placeholder="Nom d'un épisode à ajouter"><button class="btn" data-se-epaddbtn="${idx}" type="button">＋</button></div>
+    </div>`;
+  }
+  const rows = eps.map((e,ei)=>`<label class="ep-row">
+      <input type="checkbox" data-se-ep="${idx}" data-ep="${ei}" ${e.watched?'checked':''}>
+      <span class="ep-num">Ép. ${e.num}</span>
+      <input class="ep-name ${e.watched?'done':''}" type="text" data-se-epn="${idx}" data-ep="${ei}" value="${escapeHtml(e.title||'')}" placeholder="(nom)">
+      ${e.date?`<span class="ep-date">${fmtDate(e.date)}</span>`:''}
+    </label>`).join('');
+  return `<div class="ep-panel">${rows}
+      <div class="ep-add"><input type="text" data-se-epadd="${idx}" placeholder="Ajouter un épisode"><button class="btn" data-se-epaddbtn="${idx}" type="button">＋</button></div>
+    </div>`;
+}
+function seasonSectionHtml(i){
+  if(seasonOpenFor!==i.id){ seasonOpen=new Set(); seasonOpenFor=i.id; }   // change de fiche → on replie tout
+  const list = i.seasons||[];
+  const rows = list.map((s,idx)=>{
+    const single = seasonTot(s) <= 1 && !seasonEps(s);   // film / one-shot → simple « vu »
+    if(single){
+      const seen = (s.progCur||0) >= 1;
+      return `<div class="dlc-row">
+        <label class="dlc-own" title="Vu"><input type="checkbox" data-se-seen="${idx}" ${seen?'checked':''}></label>
+        <span class="dlc-name ${seen?'owned':''}">${seasonIcon(s.kind)} ${escapeHtml(s.title)} <span class="dlc-kind">${escapeHtml(s.kind||'Film')}</span></span>
+        <button class="dlc-del" data-se-del="${idx}" title="Retirer">✕</button>
+      </div>`;
+    }
+    const open = seasonOpen.has(idx), hasEps = !!seasonEps(s), pc=seasonDone(s), pt=seasonTot(s);
+    const counter = hasEps
+      ? `<span class="se-count">
+          <button class="qbtn" data-se-step="${idx}" data-se-d="-1" title="Décocher le dernier épisode vu">−</button>
+          <b>${pc} / ${pt}</b> ép.
+          <button class="qbtn" data-se-step="${idx}" data-se-d="1" title="Marquer le prochain épisode comme vu">＋</button>
+        </span>`
+      : `<span class="se-count">
+          <button class="qbtn" data-se="${idx}" data-se-d="-1">−</button>
+          <input class="qinput" type="number" min="0" data-se-cur="${idx}" value="${s.progCur||0}">
+          <span class="d-quick-suf">/ ${pt} ép.</span>
+          <button class="qbtn" data-se="${idx}" data-se-d="1">＋</button>
+        </span>`;
+    return `<div class="dlc-row">
+      <button class="se-exp" data-se-exp="${idx}" title="${open?'Replier':'Voir les épisodes'}">${open?'▾':'▸'}</button>
+      <span class="dlc-name">${seasonIcon(s.kind)} ${escapeHtml(s.title)} <span class="dlc-kind">${escapeHtml(s.kind||'Saison')}</span></span>
+      ${counter}
+      <button class="dlc-del" data-se-del="${idx}" title="Retirer">✕</button>
+    </div>${open ? episodesPanelHtml(s, idx) : ''}`;
+  }).join('');
+  return `<div class="season-sec">
+    <div class="stat-h" style="margin-top:16px">📺 Saisons / Films / OVA</div>
+    ${list.length ? `<div class="dlc-list">${rows}</div>` : `<p class="help" style="margin:4px 0">Aucune saison enregistrée.</p>`}
+    <div class="dlc-actions">
+      <button class="btn" id="seFetch" type="button">🔄 Récupérer les épisodes</button>
+      <button class="btn" id="seRelatedBtn" type="button">🧩 Récupérer les saisons liées</button>
+      <button class="btn" id="seAddToggle" type="button">➕ Ajouter</button>
+    </div>
+    <div class="help" id="seStatus"></div>
+    <div id="seRelated"></div>
+    <div class="dlc-add" id="seAddForm" style="display:none">
+      <input type="text" id="seTitle" placeholder="Nom (ex. « Saison 2 » ou titre du film)">
+      <select id="seKind" class="mini"><option>Saison</option><option>Film</option><option>OVA</option><option>Spécial</option></select>
+      <input type="number" id="seTotal" min="0" placeholder="Nb épisodes (vide = film)" style="width:170px">
+      <button class="btn btn-primary" id="seAddBtn" type="button">Ajouter</button>
+    </div>
+  </div>`;
+}
+function wireSeasons(i){
+  const sec = $('#dInfo'); if(!sec || !sec.querySelector('.season-sec')) return;
+  const save = async ()=>{ syncFicheFromSeasons(i); i.updated=Date.now(); await DB.put(i); render(); renderDetailInfo(i); await afterChange(); };
+  const at=$('#seAddToggle'); if(at) at.onclick=()=>{ const f=$('#seAddForm'); f.style.display=f.style.display==='none'?'flex':'none'; if(f.style.display==='flex') $('#seTitle').focus(); };
+  // Import auto : Jikan (MAL) d'abord, Kitsu en dernier recours. Ajoute une saison remplie (noms + dates).
+  const seFetchLabel='🔄 Récupérer les épisodes';
+  const fb=$('#seFetch'); if(fb) fb.onclick=async()=>{
+    if(!navigator.onLine){ $('#seStatus').textContent='📡 Hors ligne — connecte-toi pour récupérer les épisodes.'; return; }
+    fb.disabled=true; fb.textContent='⏳ Recherche…';
+    try{
+      const r = await importEpisodesCascade(i);
+      if(r.kitsuId) i.kitsuId = r.kitsuId;   // mémorise l'id Kitsu (dates / prochain épisode)
+      i.seasons=[...(i.seasons||[]), {title:r.title, kind:r.kind, progCur:0, progTotal:r.episodes.length, episodes:r.episodes, airing:r.airing}];
+      seasonOpen.add(i.seasons.length-1);   // déplie la saison importée
+      toast('✅ '+r.episodes.length+' épisode(s) importé(s) via '+r.source);
+      await save();
+    }catch(e){ fb.disabled=false; fb.textContent=seFetchLabel; $('#seStatus').textContent='❌ '+(e.message||'échec')+' — renomme la fiche ou ajoute son lien MAL/Kitsu.'; }
+  };
+  // Import des saisons/films/OVA LIÉS : propose une liste à cocher (pour écarter recaps/collabs/spin-offs).
+  const roleLabel={sequel:'Suite',prequel:'Préquelle',side_story:'Histoire annexe',parent_story:'Histoire principale',summary:'Résumé',spinoff:'Spin-off',alternative_version:'Version alternative',full_story:'Histoire complète',other:'Autre'};
+  function renderRelatedPicker(cands){
+    const box=$('#seRelated');
+    box.innerHTML=`<div class="rel-pick">
+      <div class="help">Coche ce que tu veux importer (le bruit est décoché par défaut) :</div>
+      ${cands.map((c,k)=>`<label class="ep-row"><input type="checkbox" data-cand="${k}" ${c.check?'checked':''}>
+        <span class="dlc-name">${seasonIcon(c.kind)} ${escapeHtml(c.title)} <span class="dlc-kind">${c.kind} · ${roleLabel[c.role]||c.role}${c.episodeCount?' · '+c.episodeCount+' ép.':''}${c.year?' · '+c.year:''}</span></span></label>`).join('')}
+      <div class="ep-add"><button class="btn btn-primary" id="relImport" type="button">Importer la sélection</button><button class="btn" id="relCancel" type="button">Annuler</button></div>
+      <div class="help" id="relStatus"></div></div>`;
+    $('#relCancel').onclick=()=>{ box.innerHTML=''; };
+    $('#relImport').onclick=async()=>{
+      const chosen=[...box.querySelectorAll('[data-cand]')].filter(c=>c.checked).map(c=>cands[+c.dataset.cand]);
+      if(!chosen.length){ $('#relStatus').textContent='Rien de coché.'; return; }
+      $('#relImport').disabled=true;
+      const existing=new Set((i.seasons||[]).map(s=>(s.title||'').toLowerCase()));
+      let added=0;
+      for(let n=0;n<chosen.length;n++){
+        const c=chosen[n]; $('#relStatus').textContent=`⏳ Import ${n+1}/${chosen.length} : ${c.title}…`;
+        if(existing.has((c.title||'').toLowerCase())) continue;   // déjà présent → on saute
+        try{
+          const detailed = c.kind!=='Film' && c.episodeCount>0;
+          const eps = detailed ? await fetchKitsuEpisodes(c.id, c.episodeCount) : [];
+          const season = eps.length
+            ? {title:c.title, kind:c.kind, progCur:0, progTotal:eps.length, episodes:eps, airing:c.airing}
+            : {title:c.title, kind:c.kind, progCur:0, progTotal:(c.kind==='Film'?1:(c.episodeCount||1)), episodes:[], airing:c.airing};
+          i.seasons=[...(i.seasons||[]), season]; added++;
+        }catch(e){ /* cet élément échoue → on continue */ }
+      }
+      box.innerHTML=''; toast('✅ '+added+' saison(s)/film(s) importé(s)');
+      await save();
+    };
+  }
+  const rb=$('#seRelatedBtn'); if(rb) rb.onclick=async()=>{
+    if(!navigator.onLine){ $('#seStatus').textContent='📡 Hors ligne — connecte-toi pour récupérer les saisons.'; return; }
+    rb.disabled=true; rb.textContent='⏳ Recherche…';
+    try{
+      if(!i.kitsuId){ const ent=await resolveKitsuEntry(i); if(!ent) throw new Error('anime introuvable sur Kitsu'); i.kitsuId=ent.id; }
+      const cands=await fetchKitsuRelated(i.kitsuId);
+      if(!cands.length){ $('#seStatus').textContent='Aucune saison / film liés trouvés.'; }
+      else { $('#seStatus').textContent=''; renderRelatedPicker(cands); }
+    }catch(e){ $('#seStatus').textContent='❌ '+(e.message||'échec'); }
+    rb.disabled=false; rb.textContent='🧩 Récupérer les saisons liées';
+  };
+  // Un « Film » n'a pas de nombre d'épisodes → on masque le champ dès qu'on le sélectionne.
+  const ks=$('#seKind'), tot=$('#seTotal');
+  if(ks) ks.onchange=()=>{ if(tot) tot.style.display = ks.value==='Film' ? 'none' : ''; };
+  const ab=$('#seAddBtn'); if(ab) ab.onclick=async()=>{
+    const t=$('#seTitle').value.trim();
+    if(!t){ toast('⚠️ Donne d\'abord un nom'); $('#seTitle').focus(); return; }   // nom obligatoire pour les 4 types
+    const kind=$('#seKind').value;
+    let total;
+    if(kind==='Film'){ total=1; }   // un « Film » est une entrée unique (pas d'épisodes)
+    else{
+      total=Math.max(0, +$('#seTotal').value||0);
+      if(total<=0){ toast('⚠️ Indique le nombre d\'épisodes'); $('#seTotal').focus(); return; }   // Saison/OVA/Spécial : nb épisodes obligatoire
+    }
+    i.seasons=[...(i.seasons||[]), {title:t, kind, progCur:0, progTotal:total, episodes:[]}];
+    await save();
+  };
+  // Sauvegarde « silencieuse » (sans reconstruire l'affichage) : pour l'édition du nom d'un épisode,
+  // afin de ne pas perdre le focus quand on tabule d'un champ à l'autre.
+  const saveQuiet = async ()=>{ i.updated=Date.now(); await DB.put(i); await afterChange(); };
+  const syncEps = s => { const e=(s.episodes&&s.episodes.length)?s.episodes:null; if(e){ s.progTotal=e.length; s.progCur=e.filter(x=>x.watched).length; } };
+  // Films / one-shots : case « vu »
+  sec.querySelectorAll('[data-se-seen]').forEach(c=>c.onchange=async()=>{ const s=i.seasons[+c.dataset.seSeen]; s.progTotal=s.progTotal||1; s.progCur=c.checked?s.progTotal:0; await save(); });
+  sec.querySelectorAll('[data-se-del]').forEach(b=>b.onclick=async()=>{ i.seasons.splice(+b.dataset.seDel,1); seasonOpen=new Set(); await save(); });
+  // Compteur manuel ± (saison sans épisodes détaillés)
+  sec.querySelectorAll('.qbtn[data-se]').forEach(b=>b.onclick=async()=>{ const s=i.seasons[+b.dataset.se]; let v=(s.progCur||0)+(+b.dataset.seD); v=Math.max(0,v); if(s.progTotal>0&&v>s.progTotal)v=s.progTotal; s.progCur=v; await save(); });
+  // ± « dans l'ordre » sur une saison détaillée : ＋ coche le 1er épisode non vu, − décoche le dernier vu.
+  sec.querySelectorAll('.qbtn[data-se-step]').forEach(b=>b.onclick=async()=>{
+    const s=i.seasons[+b.dataset.seStep]; if(!s.episodes||!s.episodes.length) return;
+    if(+b.dataset.seD>0){ const e=s.episodes.find(x=>!x.watched); if(e) e.watched=true; }
+    else { for(let k=s.episodes.length-1;k>=0;k--){ if(s.episodes[k].watched){ s.episodes[k].watched=false; break; } } }
+    syncEps(s); await save();
+  });
+  sec.querySelectorAll('[data-se-cur]').forEach(inp=>inp.onchange=async()=>{ const s=i.seasons[+inp.dataset.seCur]; let v=Math.max(0,Math.round(+inp.value||0)); if(s.progTotal>0&&v>s.progTotal)v=s.progTotal; s.progCur=v; await save(); });
+  // Déplier / replier une saison (UI seulement, pas de sauvegarde)
+  sec.querySelectorAll('[data-se-exp]').forEach(b=>b.onclick=()=>{ const k=+b.dataset.seExp; seasonOpen.has(k)?seasonOpen.delete(k):seasonOpen.add(k); renderDetailInfo(i); });
+  // Générer les N épisodes d'une saison (reprend la progression déjà saisie : les N premiers cochés)
+  sec.querySelectorAll('[data-se-gen]').forEach(b=>b.onclick=async()=>{ const s=i.seasons[+b.dataset.seGen]; const n=s.progTotal||0, w=s.progCur||0; s.episodes=Array.from({length:n},(_,k)=>({num:k+1, title:'', watched:k<w})); syncEps(s); await save(); });
+  // Cocher/décocher un épisode (dans le désordre) → recalcule X/Y
+  sec.querySelectorAll('[data-se-ep]').forEach(c=>c.onchange=async()=>{ const s=i.seasons[+c.dataset.seEp]; s.episodes[+c.dataset.ep].watched=c.checked; syncEps(s); await save(); });
+  // Nom d'un épisode (sauvegarde silencieuse pour garder le focus)
+  sec.querySelectorAll('[data-se-epn]').forEach(inp=>inp.onchange=async()=>{ i.seasons[+inp.dataset.seEpn].episodes[+inp.dataset.ep].title=inp.value.trim(); await saveQuiet(); });
+  // Ajouter un épisode manuellement (n° = suivant du max existant)
+  sec.querySelectorAll('[data-se-epaddbtn]').forEach(b=>b.onclick=async()=>{ const idx=+b.dataset.seEpaddbtn, inp=sec.querySelector('[data-se-epadd="'+idx+'"]'), t=(inp?.value||'').trim(); const s=i.seasons[idx]; if(!s.episodes) s.episodes=[]; const num=s.episodes.length?Math.max(...s.episodes.map(e=>e.num))+1:1; s.episodes.push({num, title:t, watched:false}); syncEps(s); seasonOpen.add(idx); await save(); });
+}
+
 // Construit (et reconstruit après un ＋/−) la zone d'infos du détail, SANS toucher à l'audio
 const pbar = w => `<div class="prog-bar" style="margin-top:6px"><i style="width:${w}%"></i></div>`;
 function renderDetailInfo(i){
@@ -1585,7 +1895,18 @@ function renderDetailInfo(i){
 
   // Progression : le % d'un jeu est TOUJOURS affiché ; sinon seulement si un total est défini
   const pc=i.progCur||0, pt=i.progTotal||0, step=isGame?5:1;
-  if(isGame || pt>0){
+  const seasonsList = (i.type==='anime'||i.type==='film') ? (i.seasons||[]) : [];
+  if(seasonsList.length){
+    // La fiche a des saisons → la progression du haut devient un TOTAL en lecture seule (on édite via les saisons).
+    const ag = seasonsList.reduce((o,s)=>{ o.done+=seasonDone(s); o.tot+=seasonTot(s); return o; }, {done:0,tot:0});
+    if(ag.tot>0){
+      h.push(`<div class="d-quick" style="cursor:default">
+        <span class="d-quick-label">Progression totale</span>
+        <span class="d-quick-suf" style="margin-left:auto"><b>${ag.done} / ${ag.tot}</b>${u?' '+u:''}</span>
+      </div>`);
+      h.push(pbar(Math.min(100,Math.round(ag.done/ag.tot*100))));
+    }
+  } else if(isGame || pt>0){
     const suf = isGame ? '%' : '/ '+pt+(u?' '+u:'');
     h.push(`<div class="d-quick">
       <span class="d-quick-label">Progression${isGame?' (%)':''}</span>
@@ -1621,6 +1942,7 @@ function renderDetailInfo(i){
   if(i.lists&&i.lists.length) h.push(`<div class="d-tags">${i.lists.map(x=>`<span class="tag" style="background:var(--accent);color:#fff">📚 ${escapeHtml(x)}</span>`).join('')}</div>`);
   if(i.link) h.push(`<a class="btn d-link" href="${escapeHtml(i.link)}" target="_blank" rel="noopener">🔗 Ouvrir le lien</a>`);
   if(isGame) h.push(dlcSectionHtml(i));   // 🎮 DLC & extensions (voir / récupérer / ajouter)
+  if(i.type==='anime'||i.type==='film') h.push(seasonSectionHtml(i));   // 📺 Saisons / Films / OVA dans la fiche
 
   $('#dInfo').innerHTML = h.join('');
   $('#dComment').innerHTML = i.comment ? `<div class="d-comment">${escapeHtml(i.comment)}</div>` : '';
@@ -1629,6 +1951,7 @@ function renderDetailInfo(i){
   const qp=$('#qProg'); if(qp) qp.onchange=()=>quickSet('prog', +qp.value||0);
   const qa=$('#qAch'); if(qa) qa.onchange=()=>quickSet('ach', +qa.value||0);
   if(isGame) wireDlc(i);
+  if(i.type==='anime'||i.type==='film') wireSeasons(i);
 }
 
 async function toggleFav(id){
@@ -2410,6 +2733,21 @@ async function fetchAnimeNext(malId){
   if(d.nextAiringEpisode) return {status:'airing', date:dkey(new Date(d.nextAiringEpisode.airingAt*1000)), ep:d.nextAiringEpisode.episode, epTotal:Math.max(0, d.nextAiringEpisode.episode-1)};
   return {status: d.status==='RELEASING' ? 'airing' : (d.status==='FINISHED' ? 'finished' : 'none'), epTotal: d.episodes||0};
 }
+// Anime : Kitsu → prochaine date de diffusion (nextRelease) par id Kitsu. Dernier recours pour le calendrier.
+async function fetchAnimeNextKitsu(kitsuId){
+  const r = await fetch('https://kitsu.io/api/edge/anime/'+kitsuId+'?fields[anime]=status,nextRelease,episodeCount', {headers:{'Accept':'application/vnd.api+json'}});
+  if(!r.ok) throw new Error('kitsu '+r.status);
+  const a = (await r.json()).data?.attributes; if(!a) return {status:'none'};
+  if(a.nextRelease) return {status:'airing', date:dkey(new Date(a.nextRelease)), epTotal:a.episodeCount||0};   // pas de n° d'épisode fourni
+  return {status: a.status==='current' ? 'airing' : (a.status==='finished' ? 'finished' : 'none'), epTotal:a.episodeCount||0};
+}
+// Cascade « prochain épisode » d'un anime : AniList (via id MAL) d'abord, Kitsu (via id Kitsu) en dernier recours.
+async function fetchAnimeNextAny(it){
+  const malId = malIdFromLink(it.link);
+  if(malId){ try{ return await fetchAnimeNext(malId); }catch(e){ /* AniList KO/désactivé → repli Kitsu */ } }
+  if(it.kitsuId) return await fetchAnimeNextKitsu(it.kitsuId);
+  throw new Error('aucune source de diffusion');
+}
 // Série : TMDB → prochain épisode à diffuser (date + saison/épisode).
 async function fetchSeriesNext(tmdbId){
   const key = META.cfg.tmdbKey; if(!key) throw new Error('NO_KEY');
@@ -2452,7 +2790,7 @@ const RELEASES = {
   // Fiches concernées : statut « En cours » OU « En pause » avec un lien exploitable (anime MAL / série TMDB).
   // (la pause est incluse pour détecter qu'un nouvel épisode est sorti et la faire repasser « en cours »)
   relevant(){ return shownItems().filter(i=> (i.status==='en_cours' || i.status==='pause')
-    && ((i.type==='anime' && malIdFromLink(i.link)) || (i.type==='film' && tmdbTvIdFromLink(i.link))) ); },
+    && ((i.type==='anime' && (malIdFromLink(i.link)||i.kitsuId)) || (i.type==='film' && tmdbTvIdFromLink(i.link))) ); },
   // Actualise depuis le réseau. Retourne false si hors-ligne (on garde le cache).
   async refresh(){
     if(this.busy) return false;
@@ -2463,13 +2801,14 @@ const RELEASES = {
       const rel = this.relevant();
       for(const it of rel){
         try{
-          const res = it.type==='anime' ? await fetchAnimeNext(malIdFromLink(it.link))
+          const res = it.type==='anime' ? await fetchAnimeNextAny(it)
                                          : await fetchSeriesNext(tmdbTvIdFromLink(it.link));
           this.cache[it.id] = {...res, fetchedAt:Date.now()};
           // Point 9 : garder le nombre d'épisodes à jour (le total ne fait que croître),
           // puis recalculer le statut avec la diffusion fraîche (un nouvel épisode peut faire pause → en cours).
           const beforeStatus=it.status, beforeTotal=it.progTotal||0;
-          if(res.epTotal && res.epTotal > (it.progTotal||0)) it.progTotal = res.epTotal;
+          // Le total ne se met à jour que pour les fiches SANS saisons (sinon la progression = total des saisons).
+          if(res.epTotal && res.epTotal > (it.progTotal||0) && !(it.seasons && it.seasons.length)) it.progTotal = res.epTotal;
           maybeAutoStatus(it);
           if(it.status!==beforeStatus || (it.progTotal||0)!==beforeTotal){ it.updated=Date.now(); await DB.put(it); touched=true; }
         }catch(e){ /* échec ponctuel → on conserve l'ancien cache de cette fiche */ }
@@ -2979,6 +3318,8 @@ async function save(){
     audioDirty: audioChanged ? !!curAudio : !!existing?.audioDirty,
     fav: existing?.fav || false,                       // on conserve le favori lors d'une édition
     dlcs: existing?.dlcs || [],                        // on conserve les DLC (récupérés/manuels) lors d'une édition
+    seasons: existing?.seasons || [],                  // on conserve les saisons/films/OVA regroupés dans la fiche
+    kitsuId: existing?.kitsuId,                        // id Kitsu mémorisé (récup. épisodes/dates/prochain épisode)
     created: existing?.created || Date.now(),
     updated: Date.now(),
   };
@@ -2992,6 +3333,7 @@ async function save(){
   if(dup){
     if(!confirm('⚠️ Cet élément existe déjà (même titre, même type et même image).\n\nL\'ajouter quand même ?')) return;
   }
+  syncFicheFromSeasons(item);   // si la fiche a des saisons, sa progression = total des saisons (pas les champs du formulaire)
   maybeAutoStatus(item);   // auto-statut : recalcule le statut depuis la progression si l'option est active
   await DB.put(item);
   if(existing){ Object.assign(existing,item); } else { items.push(item); }
