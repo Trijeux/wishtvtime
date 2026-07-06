@@ -383,6 +383,10 @@
   .se-move{background:none; border:none; cursor:pointer; color:var(--txt-dim); font-size:11px; padding:0 1px; flex:0 0 auto; line-height:1}
   .se-move:hover{color:var(--accent)}
   .se-move:disabled{opacity:.25; cursor:default}
+  /* Ligne de saison empilée : titre en haut (pleine largeur), commandes en dessous */
+  .se-row{flex-direction:column; align-items:stretch; gap:6px}
+  .se-head{display:flex; align-items:flex-start; gap:8px}
+  .se-ctrl{display:flex; align-items:center; gap:8px; justify-content:flex-end; flex-wrap:wrap}
   /* ---------- Profil + Niveau/XP ---------- */
   .profile-box{display:flex; gap:14px; align-items:center; border-radius:16px; padding:16px; margin-bottom:18px;
     color:#fff; background:linear-gradient(135deg,var(--accent),var(--accent-2))}
@@ -1803,11 +1807,15 @@ function seasonSectionHtml(i){
           <span class="d-quick-suf">/ ${pt} ép.</span>
           <button class="qbtn" data-se="${idx}" data-se-d="1">＋</button>
         </span>`;
-    return `<div class="dlc-row">
-      <button class="se-exp" data-se-exp="${idx}" title="${open?'Replier':'Voir les épisodes'}">${open?'▾':'▸'}</button>
-      <span class="dlc-name">${seasonIcon(s.kind)} ${escapeHtml(s.title)} <span class="dlc-kind">${escapeHtml(s.kind||'Saison')}</span></span>
-      ${counter}
-      ${mv}<button class="dlc-del" data-se-del="${idx}" title="Retirer">✕</button>
+    return `<div class="dlc-row se-row">
+      <div class="se-head">
+        <button class="se-exp" data-se-exp="${idx}" title="${open?'Replier':'Voir les épisodes'}">${open?'▾':'▸'}</button>
+        <span class="dlc-name">${seasonIcon(s.kind)} ${escapeHtml(s.title)} <span class="dlc-kind">${escapeHtml(s.kind||'Saison')}</span></span>
+      </div>
+      <div class="se-ctrl">
+        ${counter}
+        ${mv}<button class="dlc-del" data-se-del="${idx}" title="Retirer">✕</button>
+      </div>
     </div>${open ? episodesPanelHtml(s, idx) : ''}`;
   }).join('');
   return `<div class="season-sec">
